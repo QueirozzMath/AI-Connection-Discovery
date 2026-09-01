@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HypothesesRouteImport } from './routes/hypotheses'
 import { Route as MetricsRouteImport } from './routes/metrics'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HypothesesRoute = HypothesesRouteImport.update({
+  id: '/hypotheses',
+  path: '/hypotheses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MetricsRoute = MetricsRouteImport.update({
@@ -25,27 +31,31 @@ const MetricsRoute = MetricsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/metrics'
+  fullPaths: '/' | '/hypotheses' | '/metrics'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/metrics'
-  id: '__root__' | '/' | '/metrics'
+  to: '/' | '/hypotheses' | '/metrics'
+  id: '__root__' | '/' | '/hypotheses' | '/metrics'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HypothesesRoute: typeof HypothesesRoute
   MetricsRoute: typeof MetricsRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hypotheses': {
+      id: '/hypotheses'
+      path: '/hypotheses'
+      fullPath: '/hypotheses'
+      preLoaderRoute: typeof HypothesesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/metrics': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HypothesesRoute: HypothesesRoute,
   MetricsRoute: MetricsRoute,
 }
 export const routeTree = rootRouteImport
