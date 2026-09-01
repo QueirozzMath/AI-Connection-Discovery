@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HypothesesRouteImport } from './routes/hypotheses'
+import { Route as MetricsRouteImport } from './routes/metrics'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HypothesesRoute = HypothesesRouteImport.update({
+  id: '/hypotheses',
+  path: '/hypotheses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MetricsRoute = MetricsRouteImport.update({
+  id: '/metrics',
+  path: '/metrics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
+  '/metrics': typeof MetricsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
+  '/metrics': typeof MetricsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/hypotheses': typeof HypothesesRoute
+  '/metrics': typeof MetricsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/hypotheses' | '/metrics'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/hypotheses' | '/metrics'
+  id: '__root__' | '/' | '/hypotheses' | '/metrics'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  HypothesesRoute: typeof HypothesesRoute
+  MetricsRoute: typeof MetricsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/hypotheses': {
+      id: '/hypotheses'
+      path: '/hypotheses'
+      fullPath: '/hypotheses'
+      preLoaderRoute: typeof HypothesesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/metrics': {
+      id: '/metrics'
+      path: '/metrics'
+      fullPath: '/metrics'
+      preLoaderRoute: typeof MetricsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  HypothesesRoute: HypothesesRoute,
+  MetricsRoute: MetricsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
