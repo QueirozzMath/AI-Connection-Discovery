@@ -35,7 +35,7 @@ export const Route = createFileRoute("/metrics")({
       },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(metricsQuery),
+  ssr: false,
   component: () => (
     <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
       <MetricsPage />
