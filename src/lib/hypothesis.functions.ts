@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { streamText, Output, NoObjectGeneratedError } from "ai";
+import { streamText } from "ai";
 import { z } from "zod";
 
 const Input = z.object({
@@ -63,23 +63,35 @@ export const generateHypothesis = createServerFn({ method: "POST" })
       "A previsão testável deve descrever um experimento concreto com desfecho mensurável.",
     ].join(" ");
 
-    try {
-      const result = streamText({
-        model: gateway(MODEL),
-        system,
-        prompt: context,
-        output: Output.object({ schema: Schema }),
-      });
-      const output = await result.output;
-      return { ...output, pair: [data.a, data.c], model: MODEL };
-    } catch (error) {
-      if (NoObjectGeneratedError.isInstance(error) && error.text) {
-        const cleaned = error.text.replace(/```json|```/g, "").trim();
-        const parsed = Schema.safeParse(JSON.parse(cleaned));
-        if (parsed.success) {
-          return { ...parsed.data, pair: [data.a, data.c], model: MODEL };
-        }
-      }
-      throw error;
+    const shape = [
+      '{',
+      '  "title": string,',
+      '  "hypothesis": string,',
+      '  "mechanism": string,',
+      '  "bridge_reasoning": string,',
+      '  "testable_prediction": string,',
+      '  "skeptic_critique": string,',
+      '  "confidence": number entre 0 e 1,',
+      '  "novelty": "alta" | "media" | "baixa"',
+      '}',
+    ].join("\n");
+
+    const result = streamText({
+      model: gateway(MODEL),
+      system: `${system}\n\nResponda SOMENTE com um objeto JSON valido nesta forma:\n${shape}`,
+      prompt: context,
+    });
+
+    const raw = await result.text;
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1) {
+      throw new Error("O agente nao retornou um JSON valido.");
     }
+    const parsed = Schema.safeParse(JSON.parse(cleaned.slice(start, end + 1)));
+    if (!parsed.success) {
+      throw new Error("Resposta do agente fora do formato esperado.");
+    }
+    return { ...parsed.data, pair: [data.a, data.c], model: MODEL };
   });
