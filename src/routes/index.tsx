@@ -37,12 +37,7 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  loader: ({ context }) =>
-    Promise.all([
-      context.queryClient.ensureQueryData(graphQuery),
-      context.queryClient.ensureQueryData(candidatesQuery),
-      context.queryClient.ensureQueryData(metricsQuery),
-    ]),
+  ssr: false,
   component: () => (
     <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando rede…</div>}>
       <MapPage />

@@ -33,7 +33,7 @@ export const Route = createFileRoute("/hypotheses")({
       },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(candidatesQuery),
+  ssr: false,
   component: () => (
     <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando pares…</div>}>
       <HypothesesPage />
