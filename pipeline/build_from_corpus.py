@@ -531,8 +531,6 @@ def run_cutoff(cutoff, recs, corpus_max_year, node_year, label, pair_first, pair
     pos3 = spectral_layout(export_nodes, adj_now, dims=3, seed=args.seed)
     hier = hierarchy_layout(export_nodes, trees)
     edges = []
-    for a in export_nodes:
-        ia = export_nodes.index(a) if False else None
     idx = {n: i for i, n in enumerate(export_nodes)}
     for a, nb in adj_now.items():
         if a not in idx:
