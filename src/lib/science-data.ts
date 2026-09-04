@@ -4,10 +4,23 @@ export interface GraphNode {
   id: string;
   label: string;
   cat: string;
+  tree: string;
   x: number;
   y: number;
+  z: number;
+  hx: number;
+  hy: number;
   deg: number;
   pubs: number;
+  growth: number;
+}
+
+export interface LinkModel {
+  type: string;
+  mean: number[];
+  std: number[];
+  coef: number[];
+  intercept: number;
 }
 
 export interface ScienceGraph {
@@ -15,10 +28,14 @@ export interface ScienceGraph {
     source: string;
     demo?: boolean;
     cutoff_year: number;
+    corpus_max_year: number;
     n_nodes: number;
     n_edges: number;
+    n_articles: number;
   };
   categories: { id: string; label: string }[];
+  features: string[];
+  model: LinkModel;
   nodes: GraphNode[];
   edges: [number, number, number][];
 }
@@ -27,8 +44,8 @@ export interface Candidate {
   rank: number;
   a: string;
   c: string;
-  a_idx?: number;
-  c_idx?: number;
+  a_ui?: string;
+  c_ui?: string;
   prob: number;
   confirmed: boolean;
   first_year: number | null;
@@ -40,7 +57,9 @@ export interface Candidate {
 export interface Metrics {
   demo?: boolean;
   generated_at: string;
+  source?: string;
   cutoff_year: number;
+  train_cutoff?: number;
   window: [number, number];
   n_articles: number;
   graph: { nodes: number; edges_pre: number; edges_post_new: number; density: number };
@@ -63,9 +82,33 @@ export interface Metrics {
     n_confirmed: number;
     rate: number;
     median_lead_time: number | null;
+    mean_lead_time?: number | null;
     lead_time_histogram: { years: number; n: number }[];
   };
   hypothesis_eval?: { n: number; correct: number; partial: number; unsupported: number };
+}
+
+export interface DataIndex {
+  generated_at: string;
+  source: string;
+  n_articles: number;
+  corpus_years: [number, number];
+  cutoffs: number[];
+  default_cutoff: number;
+}
+
+export interface TimelinePoint {
+  cutoff_year: number;
+  auc: number;
+  auc_ci95: [number, number];
+  n_predicted: number;
+  n_confirmed: number;
+  rate: number;
+  median_lead_time: number | null;
+  mean_lead_time: number | null;
+  precision_at_50: number | null;
+  positives_rate: number;
+  nodes: number;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -74,23 +117,39 @@ async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const graphQuery = queryOptions({
-  queryKey: ["science", "graph"],
-  queryFn: () => getJson<ScienceGraph>("/data/graph.json"),
+export const indexQuery = queryOptions({
+  queryKey: ["science", "index"],
+  queryFn: () => getJson<DataIndex>("/data/index.json"),
   staleTime: Infinity,
 });
 
-export const candidatesQuery = queryOptions({
-  queryKey: ["science", "candidates"],
-  queryFn: () => getJson<{ items: Candidate[] }>("/data/candidates.json"),
+export const timelineQuery = queryOptions({
+  queryKey: ["science", "timeline"],
+  queryFn: () => getJson<{ items: TimelinePoint[] }>("/data/timeline.json"),
   staleTime: Infinity,
 });
 
-export const metricsQuery = queryOptions({
-  queryKey: ["science", "metrics"],
-  queryFn: () => getJson<Metrics>("/data/metrics.json"),
-  staleTime: Infinity,
-});
+export const graphQuery = (cutoff: number) =>
+  queryOptions({
+    queryKey: ["science", "graph", cutoff],
+    queryFn: () => getJson<ScienceGraph>(`/data/graph-${cutoff}.json`),
+    staleTime: Infinity,
+  });
+
+export const candidatesQuery = (cutoff: number) =>
+  queryOptions({
+    queryKey: ["science", "candidates", cutoff],
+    queryFn: () =>
+      getJson<{ cutoff_year: number; items: Candidate[] }>(`/data/candidates-${cutoff}.json`),
+    staleTime: Infinity,
+  });
+
+export const metricsQuery = (cutoff: number) =>
+  queryOptions({
+    queryKey: ["science", "metrics", cutoff],
+    queryFn: () => getJson<Metrics>(`/data/metrics-${cutoff}.json`),
+    staleTime: Infinity,
+  });
 
 /** Paleta por ramo da arvore MeSH (usada apenas no canvas do mapa). */
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -113,6 +172,23 @@ export const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export const catColor = (cat: string) => CATEGORY_COLORS[cat] ?? "#9aa4b8";
+
+export const FEATURE_LABELS: Record<string, string> = {
+  common_neighbors: "Vizinhos comuns",
+  adamic_adar: "Adamic-Adar",
+  resource_allocation: "Resource allocation",
+  jaccard: "Jaccard",
+  pref_attachment: "Preferential attachment",
+  cosine_profile: "Cosseno de perfis",
+  bridge_strength: "Força das pontes",
+  bridge_max: "Ponte mais forte",
+  deg_ratio: "Razão de graus",
+  same_branch: "Mesmo ramo MeSH",
+  tree_distance: "Distância hierárquica",
+  growth_min: "Crescimento (mín.)",
+  growth_max: "Crescimento (máx.)",
+  drug_disease_pair: "Par fármaco-doença",
+};
 
 export const pct = (v: number, digits = 1) => `${(v * 100).toFixed(digits)}%`;
 export const num = (v: number) => v.toLocaleString("pt-BR");

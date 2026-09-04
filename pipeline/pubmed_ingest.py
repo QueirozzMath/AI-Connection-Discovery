@@ -142,12 +142,15 @@ def main() -> None:
 
     seen: set[str] = set()
     if out_path.exists():
-        with gzip.open(out_path, "rt", encoding="utf-8") as fh:
-            for line in fh:
-                try:
-                    seen.add(json.loads(line)["pmid"])
-                except Exception:  # noqa: BLE001
-                    pass
+        try:
+            with gzip.open(out_path, "rt", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        seen.add(json.loads(line)["pmid"])
+                    except Exception:  # noqa: BLE001
+                        pass
+        except EOFError:
+            print("aviso: corpus truncado; continuando", flush=True)
         print(f"corpus existente: {len(seen)} artigos", flush=True)
 
     cells = [(y, b, name) for y in range(args.start, args.end + 1) for b, name in BRANCHES.items()]
