@@ -1,0 +1,224 @@
+{
+ "generated_at": "2026-09-05T01:23:57Z",
+ "source": "PubMed E-utilities (MEDLINE, amostra estratificada real)",
+ "cutoff_year": 2018,
+ "train_cutoff": 2012,
+ "window": [
+  2019,
+  2025
+ ],
+ "n_articles": 67560,
+ "graph": {
+  "nodes": 4292,
+  "edges_pre": 257726,
+  "edges_post_new": 18990,
+  "density": 0.027987879875149942
+ },
+ "labels": {
+  "n": 60000,
+  "positives": 117,
+  "rate": 0.00195
+ },
+ "model": {
+  "name": "Gradient boosting sobre features multiplex MeSH",
+  "auc": 0.84818023350662,
+  "auc_ci95": [
+   0.8183573092895948,
+   0.8800373097935271
+  ],
+  "auc_bootstrap_mean": 0.8471939698329339,
+  "permutation_p": 0.006622516556291391,
+  "feature_importance": [
+   {
+    "feature": "common_neighbors",
+    "importance": 0.0789564847946167
+   },
+   {
+    "feature": "adamic_adar",
+    "importance": 0.021222056820988655
+   },
+   {
+    "feature": "resource_allocation",
+    "importance": 0.06756290048360825
+   },
+   {
+    "feature": "jaccard",
+    "importance": 0.07203445583581924
+   },
+   {
+    "feature": "pref_attachment",
+    "importance": 0.17803241312503815
+   },
+   {
+    "feature": "cosine_profile",
+    "importance": 0.07834170013666153
+   },
+   {
+    "feature": "bridge_strength",
+    "importance": 0.09856921434402466
+   },
+   {
+    "feature": "bridge_max",
+    "importance": 0.05133974552154541
+   },
+   {
+    "feature": "deg_ratio",
+    "importance": 0.10293381661176682
+   },
+   {
+    "feature": "same_branch",
+    "importance": 0.05371590703725815
+   },
+   {
+    "feature": "tree_distance",
+    "importance": 0.02305172011256218
+   },
+   {
+    "feature": "growth_min",
+    "importance": 0.12375633418560028
+   },
+   {
+    "feature": "growth_max",
+    "importance": 0.048266977071762085
+   },
+   {
+    "feature": "drug_disease_pair",
+    "importance": 0.00221629673615098
+   }
+  ]
+ },
+ "model_comparison": [
+  {
+   "name": "Adamic-Adar",
+   "auc": 0.8643708507943767
+  },
+  {
+   "name": "Vizinhos comuns",
+   "auc": 0.8600344032687102
+  },
+  {
+   "name": "Resource allocation",
+   "auc": 0.8543937030485801
+  },
+  {
+   "name": "Multiplex MeSH (GBM)",
+   "auc": 0.84818023350662
+  },
+  {
+   "name": "Regressao logistica multiplex",
+   "auc": 0.8337276207122407
+  },
+  {
+   "name": "Jaccard",
+   "auc": 0.7722987175419418
+  },
+  {
+   "name": "Cosseno de perfis",
+   "auc": 0.7544488818723576
+  },
+  {
+   "name": "Preferential attachment",
+   "auc": 0.7519064597617776
+  }
+ ],
+ "delong_vs_best_baseline": {
+  "auc_a": 0.84818023350662,
+  "auc_b": 0.8643708507943767,
+  "z": -1.0613210376633309,
+  "p": 0.28854402818707653
+ },
+ "precision_at_k": [
+  {
+   "k": 10,
+   "precision": 0.0,
+   "recall": 0.0
+  },
+  {
+   "k": 25,
+   "precision": 0.04,
+   "recall": 0.008547008547008548
+  },
+  {
+   "k": 50,
+   "precision": 0.04,
+   "recall": 0.017094017094017096
+  },
+  {
+   "k": 100,
+   "precision": 0.02,
+   "recall": 0.017094017094017096
+  },
+  {
+   "k": 200,
+   "precision": 0.015,
+   "recall": 0.02564102564102564
+  },
+  {
+   "k": 500,
+   "precision": 0.016,
+   "recall": 0.06837606837606838
+  },
+  {
+   "k": 1000,
+   "precision": 0.014,
+   "recall": 0.11965811965811966
+  }
+ ],
+ "calibration": {
+  "brier": 0.002192071085270496,
+  "bins": [
+   {
+    "p_pred": 0.0035017393864884127,
+    "p_obs": 0.0019049847099911435,
+    "n": 59843
+   },
+   {
+    "p_pred": 0.1401313508829837,
+    "p_obs": 0.010309278350515464,
+    "n": 97
+   },
+   {
+    "p_pred": 0.24428762899427464,
+    "p_obs": 0.0,
+    "n": 29
+   },
+   {
+    "p_pred": 0.3370178639844425,
+    "p_obs": 0.11764705882352941,
+    "n": 17
+   },
+   {
+    "p_pred": 0.944843510974349,
+    "p_obs": 0.0,
+    "n": 9
+   }
+  ]
+ },
+ "powerlaw": {
+  "alpha": 1.2886431001418803,
+  "xmin": 3.0,
+  "loglik_ratio_vs_lognormal": -4264.693716622394,
+  "p": 0.0
+ },
+ "confirmations": {
+  "n_predicted": 500,
+  "n_confirmed": 8,
+  "rate": 0.016,
+  "median_lead_time": 1.5,
+  "mean_lead_time": 1.75,
+  "lead_time_histogram": [
+   {
+    "years": 1,
+    "n": 4
+   },
+   {
+    "years": 2,
+    "n": 2
+   },
+   {
+    "years": 3,
+    "n": 2
+   }
+  ]
+ }
+}
