@@ -1,0 +1,20 @@
+{
+ "items": [
+  {
+   "cutoff_year": 2010,
+   "auc": 0.8093463306262497,
+   "auc_ci95": [
+    0.7953255559349427,
+    0.824216934799502
+   ],
+   "n_predicted": 500,
+   "n_confirmed": 39,
+   "rate": 0.078,
+   "median_lead_time": 4.0,
+   "mean_lead_time": 4.897435897435898,
+   "precision_at_50": 0.08,
+   "positives_rate": 0.007083333333333333,
+   "nodes": 3622
+  }
+ ]
+}
