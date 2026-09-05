@@ -1,0 +1,68 @@
+{
+ "items": [
+  {
+   "cutoff_year": 2006,
+   "auc": 0.8103354297959596,
+   "auc_ci95": [
+    0.8000934286533379,
+    0.821378820981403
+   ],
+   "n_predicted": 500,
+   "n_confirmed": 89,
+   "rate": 0.178,
+   "median_lead_time": 6.0,
+   "mean_lead_time": 7.247191011235955,
+   "precision_at_50": 0.38,
+   "positives_rate": 0.013216666666666666,
+   "nodes": 3271
+  },
+  {
+   "cutoff_year": 2010,
+   "auc": 0.8093463306262497,
+   "auc_ci95": [
+    0.7953255559349427,
+    0.824216934799502
+   ],
+   "n_predicted": 500,
+   "n_confirmed": 39,
+   "rate": 0.078,
+   "median_lead_time": 4.0,
+   "mean_lead_time": 4.897435897435898,
+   "precision_at_50": 0.08,
+   "positives_rate": 0.007083333333333333,
+   "nodes": 3622
+  },
+  {
+   "cutoff_year": 2014,
+   "auc": 0.8451053322166387,
+   "auc_ci95": [
+    0.8208748293525648,
+    0.8630696110555264
+   ],
+   "n_predicted": 500,
+   "n_confirmed": 28,
+   "rate": 0.056,
+   "median_lead_time": 3.0,
+   "mean_lead_time": 3.642857142857143,
+   "precision_at_50": 0.12,
+   "positives_rate": 0.005,
+   "nodes": 3979
+  },
+  {
+   "cutoff_year": 2018,
+   "auc": 0.84818023350662,
+   "auc_ci95": [
+    0.8183573092895948,
+    0.8800373097935271
+   ],
+   "n_predicted": 500,
+   "n_confirmed": 8,
+   "rate": 0.016,
+   "median_lead_time": 1.5,
+   "mean_lead_time": 1.75,
+   "precision_at_50": 0.04,
+   "positives_rate": 0.00195,
+   "nodes": 4292
+  }
+ ]
+}

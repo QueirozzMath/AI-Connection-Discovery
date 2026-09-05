@@ -1,0 +1,284 @@
+{
+ "generated_at": "2026-09-05T01:02:40Z",
+ "source": "PubMed E-utilities (MEDLINE, amostra estratificada real)",
+ "cutoff_year": 2010,
+ "train_cutoff": 2004,
+ "window": [
+  2011,
+  2025
+ ],
+ "n_articles": 67560,
+ "graph": {
+  "nodes": 3622,
+  "edges_pre": 199453,
+  "edges_post_new": 45024,
+  "density": 0.03041540458741884
+ },
+ "labels": {
+  "n": 120000,
+  "positives": 850,
+  "rate": 0.007083333333333333
+ },
+ "model": {
+  "name": "Gradient boosting sobre features multiplex MeSH",
+  "auc": 0.8093463306262497,
+  "auc_ci95": [
+   0.7953255559349427,
+   0.824216934799502
+  ],
+  "auc_bootstrap_mean": 0.8092607009212561,
+  "permutation_p": 0.0033222591362126247,
+  "feature_importance": [
+   {
+    "feature": "common_neighbors",
+    "importance": 0.11688786745071411
+   },
+   {
+    "feature": "adamic_adar",
+    "importance": 0.037881944328546524
+   },
+   {
+    "feature": "resource_allocation",
+    "importance": 0.05478368699550629
+   },
+   {
+    "feature": "jaccard",
+    "importance": 0.0571347251534462
+   },
+   {
+    "feature": "pref_attachment",
+    "importance": 0.22250580787658691
+   },
+   {
+    "feature": "cosine_profile",
+    "importance": 0.12403489649295807
+   },
+   {
+    "feature": "bridge_strength",
+    "importance": 0.08315855264663696
+   },
+   {
+    "feature": "bridge_max",
+    "importance": 0.011865319684147835
+   },
+   {
+    "feature": "deg_ratio",
+    "importance": 0.05363702028989792
+   },
+   {
+    "feature": "same_branch",
+    "importance": 0.00320801162160933
+   },
+   {
+    "feature": "tree_distance",
+    "importance": 0.04478961601853371
+   },
+   {
+    "feature": "growth_min",
+    "importance": 0.12193130701780319
+   },
+   {
+    "feature": "growth_max",
+    "importance": 0.03584517166018486
+   },
+   {
+    "feature": "drug_disease_pair",
+    "importance": 0.032336026430130005
+   }
+  ]
+ },
+ "model_comparison": [
+  {
+   "name": "Resource allocation",
+   "auc": 0.8490638641356669
+  },
+  {
+   "name": "Adamic-Adar",
+   "auc": 0.8378113697514256
+  },
+  {
+   "name": "Vizinhos comuns",
+   "auc": 0.8294685344721187
+  },
+  {
+   "name": "Multiplex MeSH (GBM)",
+   "auc": 0.8093463306262497
+  },
+  {
+   "name": "Regressao logistica multiplex",
+   "auc": 0.799227340722273
+  },
+  {
+   "name": "Preferential attachment",
+   "auc": 0.7556980523808349
+  },
+  {
+   "name": "Jaccard",
+   "auc": 0.696671852089556
+  },
+  {
+   "name": "Cosseno de perfis",
+   "auc": 0.6837006590802499
+  }
+ ],
+ "delong_vs_best_baseline": {
+  "auc_a": 0.8093463306262497,
+  "auc_b": 0.8490638641356669,
+  "z": -6.882599860601275,
+  "p": 5.876993841620552e-12
+ },
+ "precision_at_k": [
+  {
+   "k": 10,
+   "precision": 0.1,
+   "recall": 0.001176470588235294
+  },
+  {
+   "k": 25,
+   "precision": 0.04,
+   "recall": 0.001176470588235294
+  },
+  {
+   "k": 50,
+   "precision": 0.08,
+   "recall": 0.004705882352941176
+  },
+  {
+   "k": 100,
+   "precision": 0.06,
+   "recall": 0.007058823529411765
+  },
+  {
+   "k": 200,
+   "precision": 0.07,
+   "recall": 0.01647058823529412
+  },
+  {
+   "k": 500,
+   "precision": 0.078,
+   "recall": 0.04588235294117647
+  },
+  {
+   "k": 1000,
+   "precision": 0.07,
+   "recall": 0.08235294117647059
+  }
+ ],
+ "calibration": {
+  "brier": 0.007528826001534864,
+  "bins": [
+   {
+    "p_pred": 0.004772620771703302,
+    "p_obs": 0.006572706897564825,
+    "n": 119129
+   },
+   {
+    "p_pred": 0.14553249999608128,
+    "p_obs": 0.08411214953271028,
+    "n": 321
+   },
+   {
+    "p_pred": 0.25221702222768727,
+    "p_obs": 0.03888888888888889,
+    "n": 180
+   },
+   {
+    "p_pred": 0.3411532208079646,
+    "p_obs": 0.10215053763440861,
+    "n": 186
+   },
+   {
+    "p_pred": 0.44252569232989225,
+    "p_obs": 0.11290322580645161,
+    "n": 62
+   },
+   {
+    "p_pred": 0.5450259747849285,
+    "p_obs": 0.0392156862745098,
+    "n": 51
+   },
+   {
+    "p_pred": 0.6514469865591513,
+    "p_obs": 0.12121212121212122,
+    "n": 33
+   },
+   {
+    "p_pred": 0.7399235967616121,
+    "p_obs": 0.0,
+    "n": 20
+   },
+   {
+    "p_pred": 0.8544586304119789,
+    "p_obs": 0.07142857142857142,
+    "n": 14
+   }
+  ]
+ },
+ "powerlaw": {
+  "alpha": 1.2943132406045024,
+  "xmin": 3.0,
+  "loglik_ratio_vs_lognormal": -3603.1328910051197,
+  "p": 0.0
+ },
+ "confirmations": {
+  "n_predicted": 500,
+  "n_confirmed": 39,
+  "rate": 0.078,
+  "median_lead_time": 4.0,
+  "mean_lead_time": 4.897435897435898,
+  "lead_time_histogram": [
+   {
+    "years": 1,
+    "n": 7
+   },
+   {
+    "years": 2,
+    "n": 9
+   },
+   {
+    "years": 3,
+    "n": 3
+   },
+   {
+    "years": 4,
+    "n": 2
+   },
+   {
+    "years": 5,
+    "n": 4
+   },
+   {
+    "years": 6,
+    "n": 3
+   },
+   {
+    "years": 7,
+    "n": 1
+   },
+   {
+    "years": 8,
+    "n": 1
+   },
+   {
+    "years": 9,
+    "n": 3
+   },
+   {
+    "years": 10,
+    "n": 1
+   },
+   {
+    "years": 11,
+    "n": 3
+   },
+   {
+    "years": 12,
+    "n": 1
+   },
+   {
+    "years": 14,
+    "n": 1
+   }
+  ]
+ }
+}

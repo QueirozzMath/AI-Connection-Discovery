@@ -1,0 +1,16 @@
+{
+ "generated_at": "2026-09-05T01:23:59Z",
+ "source": "PubMed E-utilities (MEDLINE)",
+ "n_articles": 67560,
+ "corpus_years": [
+  1985,
+  2025
+ ],
+ "cutoffs": [
+  2006,
+  2010,
+  2014,
+  2018
+ ],
+ "default_cutoff": 2014
+}
