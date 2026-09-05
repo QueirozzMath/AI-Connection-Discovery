@@ -169,44 +169,39 @@ def adjacency(pair_w, cutoff: int, keep: set[str], min_w: int = 1):
 
 # ---------------------------------------------------------------------- layouts
 def spectral_layout(nodes: list[str], adj, dims: int = 3, seed: int = 7):
+    """Layout force-directed estocastico (atracao por aresta + repulsao amostrada)."""
     idx = {n: i for i, n in enumerate(nodes)}
     n = len(nodes)
     rng = np.random.default_rng(seed)
-    pos = rng.normal(scale=1.0, size=(n, dims))
-    edges = []
-    for a, nb in adj.items():
-        if a not in idx:
-            continue
-        for b, w in nb.items():
-            if b in idx and idx[a] < idx[b]:
-                edges.append((idx[a], idx[b], math.log1p(w)))
+    pos = rng.normal(scale=30.0, size=(n, dims))
+    edges = [(idx[a], idx[b], math.log1p(w))
+             for a, nb in adj.items() if a in idx
+             for b, w in nb.items() if b in idx and idx[a] < idx[b]]
     if not edges:
         return pos
     ea = np.array([e[0] for e in edges])
     eb = np.array([e[1] for e in edges])
     ew = np.array([e[2] for e in edges], dtype=float)
     ew /= ew.max()
-    deg = np.bincount(np.concatenate([ea, eb]), minlength=n).astype(float) + 1.0
-    for it in range(120):
-        # atracao ao longo das arestas
+    iters = 160
+    sample = min(160, n)
+    for it in range(iters):
+        temp = 1.0 - it / iters
+        disp = np.zeros_like(pos)
         d = pos[eb] - pos[ea]
-        force = np.zeros_like(pos)
-        contrib = d * (ew * 0.9)[:, None]
-        np.add.at(force, ea, contrib)
-        np.add.at(force, eb, -contrib)
-        # repulsao aproximada: afasta do centroide ponderado por grau
-        center = pos.mean(axis=0)
-        rad = pos - center
-        norm = np.linalg.norm(rad, axis=1, keepdims=True) + 1e-6
-        force += rad / norm * (0.35 + 0.25 * np.log1p(deg)[:, None] / np.log1p(deg).max())
-        # jitter anti-colapso decrescente
-        force += rng.normal(scale=0.02, size=pos.shape)
-        pos += force * (0.35 * (1 - it / 120) + 0.05) / (1 + np.log1p(deg)[:, None])
-    pos -= pos.mean(axis=0)
-    scale = np.percentile(np.abs(pos), 98)
-    if scale > 0:
-        pos = pos / scale * 100
-    return pos
+        contrib = d * (ew * 0.06)[:, None]
+        np.add.at(disp, ea, contrib)
+        np.add.at(disp, eb, -contrib)
+        s_idx = rng.choice(n, size=sample, replace=False)
+        diff = pos[:, None, :] - pos[None, s_idx, :]
+        dist2 = np.sum(diff * diff, axis=2) + 4.0
+        disp += np.sum(diff / dist2[:, :, None], axis=1) * (900.0 / sample)
+        norm = np.linalg.norm(disp, axis=1, keepdims=True) + 1e-9
+        step = np.minimum(norm, 8.0 * temp + 0.5)
+        pos += disp / norm * step
+        pos -= pos.mean(axis=0)
+    scale = np.percentile(np.abs(pos), 98) or 1.0
+    return pos / scale * 100
 
 
 def hierarchy_layout(nodes: list[str], trees: dict[str, list[str]]):
