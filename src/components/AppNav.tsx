@@ -1,9 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { Activity, BrainCircuit, Map } from "lucide-react";
+import { Activity, BrainCircuit, LineChart, Map } from "lucide-react";
 
 const links = [
   { to: "/", label: "Mapa", icon: Map },
   { to: "/metrics", label: "Validação", icon: Activity },
+  { to: "/timeline", label: "Por ano de corte", icon: LineChart },
   { to: "/hypotheses", label: "Agentes", icon: BrainCircuit },
 ] as const;
 
@@ -13,7 +14,8 @@ export function AppNav() {
       <Link to="/" className="flex items-center gap-2">
         <span className="inline-block size-2.5 rounded-full bg-primary shadow-glow" />
         <span className="font-display text-sm font-semibold tracking-tight">
-          MeSHMap<span className="text-muted-foreground"> · descoberta por literatura desconexa</span>
+          MeSHMap
+          <span className="text-muted-foreground"> · descoberta por literatura desconexa</span>
         </span>
       </Link>
       <nav className="flex items-center gap-1">
