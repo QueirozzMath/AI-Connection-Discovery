@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -15,8 +15,16 @@ import {
   YAxis,
 } from "recharts";
 
-import { metricsQuery, num, pct } from "@/lib/science-data";
+import { indexQuery, metricsQuery, num, pct } from "@/lib/science-data";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/metrics")({
   head: () => ({
@@ -33,18 +41,38 @@ export const Route = createFileRoute("/metrics")({
         content:
           "Prova estatística de que o modelo de literatura desconexa supera acaso e baselines.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   ssr: false,
   component: () => (
     <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
-      <MetricsPage />
+      <MetricsGate />
     </Suspense>
   ),
 });
 
-function MetricsPage() {
-  const { data: m } = useSuspenseQuery(metricsQuery);
+function MetricsGate() {
+  const { data: idx } = useSuspenseQuery(indexQuery);
+  const [cutoff, setCutoff] = useState(idx.default_cutoff);
+  return (
+    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
+      <MetricsPage cutoff={cutoff} cutoffs={idx.cutoffs} onCutoff={setCutoff} />
+    </Suspense>
+  );
+}
+
+function MetricsPage({
+  cutoff,
+  cutoffs,
+  onCutoff,
+}: {
+  cutoff: number;
+  cutoffs: number[];
+  onCutoff: (v: number) => void;
+}) {
+  const { data: m } = useSuspenseQuery(metricsQuery(cutoff));
   const axis = { stroke: "oklch(0.7 0.024 246)", fontSize: 11 };
   const tooltip = {
     contentStyle: {
@@ -54,6 +82,7 @@ function MetricsPage() {
       fontSize: 12,
     },
   } as const;
+
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
