@@ -19,6 +19,8 @@ interface Props {
   layout: "force" | "hierarchy";
   highlight?: MapHighlight | null;
   matches?: Set<number> | null;
+  showUnselected?: boolean;
+  focusRequest?: number;
   seeds?: Set<number>;
   colorMode: "category" | "degree" | "growth";
   showEdges: boolean;
@@ -31,6 +33,8 @@ export function ScienceMap({
   layout,
   highlight,
   matches,
+  showUnselected = true,
+  focusRequest = 0,
   seeds,
   colorMode,
   showEdges,
@@ -53,17 +57,11 @@ export function ScienceMap({
     [graph, layout],
   );
 
-  // reenquadra ao trocar de layout ou de grafo
-  useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    let span = 1;
-    for (let i = 0; i < graph.nodes.length; i++)
-      span = Math.max(span, Math.abs(X(i)), Math.abs(Y(i)));
-    const scale = (Math.min(wrap.clientWidth, wrap.clientHeight) * 0.46) / span;
-    viewRef.current = { scale, tx: 0, ty: 0 };
-  }, [graph, layout, X, Y]);
-
+  const visibleEdges = useMemo(
+    () =>
+      matches ? graph.edges.filter(([a, b]) => matches.has(a) && matches.has(b)) : graph.edges,
+    [graph, matches],
+  );
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -85,12 +83,13 @@ export function ScienceMap({
     const py = (i: number) => Y(i) * v.scale + v.ty + h / 2;
 
     if (showEdges) {
-      const limit = v.scale > 12 ? graph.edges.length : Math.min(graph.edges.length, 15000);
+      const limit = Math.min(visibleEdges.length, v.scale > 12 ? 25000 : 15000);
       ctx.lineWidth = 0.5;
       ctx.strokeStyle = "rgba(140,180,220,0.08)";
       ctx.beginPath();
       for (let e = 0; e < limit; e++) {
-        const [a, b] = graph.edges[e]!;
+        const [a, b] = visibleEdges[e]!;
+        if (matches && (!matches.has(a) || !matches.has(b))) continue;
         ctx.moveTo(px(a), py(a));
         ctx.lineTo(px(b), py(b));
       }
@@ -98,11 +97,15 @@ export function ScienceMap({
     }
 
     for (let i = 0; i < graph.nodes.length; i++) {
+      if (matches && !showUnselected && !matches.has(i)) continue;
       const n = graph.nodes[i]!;
       const cx = px(i);
       const cy = py(i);
       if (cx < -20 || cy < -20 || cx > w + 20 || cy > h + 20) continue;
-      const r = Math.max(1.1, Math.sqrt(n.deg) * 0.42 * Math.min(2.4, v.scale / 3));
+      const r = Math.max(
+        1.1,
+        Math.min(9, 1 + Math.log1p(n.pubs) * 0.65) * 0.7 * Math.min(2.4, v.scale / 3),
+      );
 
       let alpha = 0.85;
       let color = catColor(n.cat);
@@ -113,15 +116,15 @@ export function ScienceMap({
         const t = Math.max(0, Math.min(1, (n.growth + 1) / 2));
         color = `hsl(${20 + t * 140}, 80%, ${45 + t * 15}%)`;
       }
-      if (matches && matches.size) alpha = matches.has(i) ? 1 : 0.07;
-      if (seeds?.has(i)) alpha = 1;
+      if (matches) alpha = matches.has(i) ? 1 : 0.07;
+      if (seeds?.has(i) && (!matches || matches.has(i))) alpha = 1;
 
       ctx.globalAlpha = alpha;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(cx, cy, seeds?.has(i) ? r + 2.5 : r, 0, Math.PI * 2);
       ctx.fill();
-      if (seeds?.has(i)) {
+      if (seeds?.has(i) && (!matches || matches.has(i))) {
         ctx.globalAlpha = 1;
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 1.2;
@@ -130,9 +133,10 @@ export function ScienceMap({
     }
     ctx.globalAlpha = 1;
 
-    if (highlight) {
+    if (highlight && (!matches || (matches.has(highlight.a) && matches.has(highlight.c)))) {
       const { a, c } = highlight;
       for (const b of highlight.bridges ?? []) {
+        if (matches && !matches.has(b)) continue;
         ctx.strokeStyle = "rgba(126,230,168,0.5)";
         ctx.lineWidth = 1.2;
         ctx.beginPath();
@@ -170,7 +174,8 @@ export function ScienceMap({
       }
     }
 
-    const labelCount = v.scale > 6 ? 260 : 70;
+    const labelCount = v.scale > 6 ? 65 : 20;
+    const occupied = new Set<string>();
     ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
     ctx.fillStyle = "rgba(226,236,250,0.72)";
     let drawn = 0;
@@ -178,19 +183,70 @@ export function ScienceMap({
       const cx = px(i);
       const cy = py(i);
       if (cx < 0 || cy < 0 || cx > w || cy > h) continue;
-      if (matches && matches.size && !matches.has(i)) continue;
+      if (matches && !matches.has(i)) continue;
+      const cell = `${Math.floor(cx / 130)},${Math.floor(cy / 24)}`;
+      if (occupied.has(cell)) continue;
+      occupied.add(cell);
       ctx.fillText(graph.nodes[i]!.label, cx + 6, cy - 5);
       drawn++;
     }
 
-    if (selected != null && graph.nodes[selected]) {
+    if (selected != null && (!matches || matches.has(selected)) && graph.nodes[selected]) {
       ctx.beginPath();
       ctx.arc(px(selected), py(selected), 9, 0, Math.PI * 2);
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
-  }, [graph, showEdges, colorMode, matches, seeds, maxDeg, highlight, selected, X, Y]);
+  }, [
+    graph,
+    visibleEdges,
+    showUnselected,
+    showEdges,
+    colorMode,
+    matches,
+    seeds,
+    maxDeg,
+    highlight,
+    selected,
+    X,
+    Y,
+  ]);
+
+  const drawRef = useRef(draw);
+  useEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+
+  // Fit only when the selection/layout changes, never on hover or pan.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap || matches?.size === 0 || !graph.nodes.length) return;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    for (let i = 0; i < graph.nodes.length; i++) {
+      if (matches && !matches.has(i)) continue;
+      minX = Math.min(minX, X(i));
+      maxX = Math.max(maxX, X(i));
+      minY = Math.min(minY, Y(i));
+      maxY = Math.max(maxY, Y(i));
+    }
+    const scale = Math.min(
+      25,
+      Math.max(
+        0.1,
+        Math.min(
+          (wrap.clientWidth * 0.82) / Math.max(12, maxX - minX),
+          (wrap.clientHeight * 0.78) / Math.max(12, maxY - minY),
+        ),
+      ),
+    );
+    viewRef.current = { scale, tx: (-(minX + maxX) / 2) * scale, ty: (-(minY + maxY) / 2) * scale };
+    setHover(null);
+    drawRef.current();
+  }, [graph, matches, layout, focusRequest, X, Y]);
 
   useEffect(() => {
     draw();
@@ -198,13 +254,14 @@ export function ScienceMap({
 
   useEffect(() => {
     const onResize = () => draw();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const observer = new ResizeObserver(onResize);
+    if (wrapRef.current) observer.observe(wrapRef.current);
+    return () => observer.disconnect();
   }, [draw]);
 
   // foca a conexão selecionada
   useEffect(() => {
-    if (!highlight) return;
+    if (!highlight || (matches && (!matches.has(highlight.a) || !matches.has(highlight.c)))) return;
     const wrap = wrapRef.current;
     if (!wrap) return;
     const cx = (X(highlight.a) + X(highlight.c)) / 2;
@@ -217,7 +274,7 @@ export function ScienceMap({
     const scale = Math.min(60, (Math.min(wrap.clientWidth, wrap.clientHeight) * 0.7) / span);
     viewRef.current = { scale, tx: -cx * scale, ty: -cy * scale };
     draw();
-  }, [highlight, draw, X, Y]);
+  }, [highlight, draw, X, Y, matches]);
 
   const pick = (clientX: number, clientY: number) => {
     const wrap = wrapRef.current;
@@ -229,6 +286,7 @@ export function ScienceMap({
     let best: number | null = null;
     let bestD = 14 * 14;
     for (let i = 0; i < graph.nodes.length; i++) {
+      if (matches && !matches.has(i)) continue;
       const dx = X(i) * v.scale + v.tx + rect.width / 2 - mx;
       const dy = Y(i) * v.scale + v.ty + rect.height / 2 - my;
       const d = dx * dx + dy * dy;
@@ -245,19 +303,20 @@ export function ScienceMap({
   return (
     <div
       ref={wrapRef}
-      className="relative h-full w-full cursor-grab overflow-hidden active:cursor-grabbing"
+      className="relative h-full w-full touch-none cursor-grab overflow-hidden active:cursor-grabbing"
       onWheel={(e) => {
         const v = viewRef.current;
         const factor = Math.exp(-e.deltaY * 0.0015);
         const rect = wrapRef.current!.getBoundingClientRect();
         const mx = e.clientX - rect.left - rect.width / 2;
         const my = e.clientY - rect.top - rect.height / 2;
-        const ns = Math.min(400, Math.max(0.6, v.scale * factor));
+        const ns = Math.min(400, Math.max(0.1, v.scale * factor));
         const k = ns / v.scale;
         viewRef.current = { scale: ns, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k };
         draw();
       }}
       onPointerDown={(e) => {
+        setHover(null);
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         dragRef.current = {
           x: e.clientX,
@@ -288,24 +347,39 @@ export function ScienceMap({
           onSelect(pick(e.clientX, e.clientY));
         }
       }}
+      onPointerCancel={() => {
+        dragRef.current = null;
+        setHover(null);
+      }}
       onPointerLeave={() => {
         dragRef.current = null;
         setHover(null);
       }}
     >
       <canvas ref={canvasRef} className="h-full w-full" />
-      {hover && graph.nodes[hover.i] && (
+      {hover && (!matches || matches.has(hover.i)) && graph.nodes[hover.i] && (
         <div
           className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
-          style={{ left: hover.x + 14, top: hover.y + 14 }}
+          style={{
+            left: Math.max(4, Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 300) - 264)),
+            top: Math.max(4, Math.min(hover.y + 14, (wrapRef.current?.clientHeight ?? 200) - 140)),
+          }}
         >
           <p className="font-display text-sm font-semibold text-foreground">
             {graph.nodes[hover.i]!.label}
           </p>
           <p className="mt-1 text-muted-foreground">
+            {graph.nodes[hover.i]!.id} ·{" "}
+            {graph.categories.find((c) => c.id === graph.nodes[hover.i]!.cat)?.label ??
+              graph.nodes[hover.i]!.cat}
+          </p>
+          <p className="mt-1 text-muted-foreground">
             {graph.nodes[hover.i]!.deg} conexões · {graph.nodes[hover.i]!.pubs} artigos · ramo{" "}
             {graph.nodes[hover.i]!.cat}
             {graph.nodes[hover.i]!.tree ? ` · ${graph.nodes[hover.i]!.tree}` : ""}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Índice de crescimento: {graph.nodes[hover.i]!.growth.toFixed(3)}
           </p>
         </div>
       )}

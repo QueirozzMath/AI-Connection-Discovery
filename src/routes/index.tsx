@@ -1,9 +1,11 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, type SearchSchemaInput } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { Boxes, Network, Search, Sparkles, Target, Zap } from "lucide-react";
 
 import { ScienceMap, type MapHighlight } from "@/components/ScienceMap";
+import { useMapLayout } from "@/hooks/use-map-layout";
+import { mapSearchIndex, selectMapNodes, summarizeMap } from "@/lib/map-selection";
 import { ScienceMap3D } from "@/components/ScienceMap3D";
 import {
   candidatesQuery,
@@ -31,6 +33,14 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (
+    search: SearchSchemaInput & { q?: unknown; cats?: unknown; context?: unknown; year?: unknown },
+  ) => ({
+    q: typeof search.q === "string" ? search.q : "",
+    cats: typeof search.cats === "string" ? search.cats : "",
+    context: search.context === true || search.context === "true",
+    year: Number.isInteger(Number(search.year)) ? Number(search.year) : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Mapa da ciência MeSH — MeSHMap" },
@@ -59,7 +69,13 @@ export const Route = createFileRoute("/")({
 
 function MapPage() {
   const { data: idx } = useSuspenseQuery(indexQuery);
-  const [cutoff, setCutoff] = useState(idx.default_cutoff);
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const cutoff =
+    search.year != null && idx.cutoffs.includes(search.year) ? search.year : idx.default_cutoff;
+  const setCutoff = (year: number) => {
+    void navigate({ search: (previous) => ({ ...previous, year }), replace: true });
+  };
   return <MapForCutoff key={cutoff} cutoff={cutoff} cutoffs={idx.cutoffs} onCutoff={setCutoff} />;
 }
 
@@ -76,8 +92,69 @@ function MapForCutoff({
   const { data: candidates } = useSuspenseQuery(candidatesQuery(cutoff));
   const { data: metrics } = useSuspenseQuery(metricsQuery(cutoff));
 
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const [query, setQuery] = useState(search.q);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [deferredQuery, setDeferredQuery] = useState(search.q);
+  const categories = useMemo(() => {
+    const labels = new Map(graph.categories.map((c) => [c.id, c.label]));
+    const counts = new Map<string, number>();
+    for (const n of graph.nodes) counts.set(n.cat, (counts.get(n.cat) ?? 0) + 1);
+    return [...counts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, count]) => ({ id, label: labels.get(id) ?? id, count }));
+  }, [graph]);
+  const selectedCategories = useMemo(
+    () => search.cats.split(",").filter((id) => categories.some((c) => c.id === id)),
+    [search.cats, categories],
+  );
+  const showUnselected = search.context;
+  const [focusRequest, setFocusRequest] = useState(0);
+  const { positions, layoutPending, layoutFailed } = useMapLayout(graph);
+  const displayGraph = useMemo(
+    () =>
+      positions
+        ? {
+            ...graph,
+            nodes: graph.nodes.map((n, i) => ({
+              ...n,
+              x: positions[i * 2]!,
+              y: positions[i * 2 + 1]!,
+            })),
+          }
+        : graph,
+    [graph, positions],
+  );
+  useEffect(() => {
+    setQuery(search.q);
+    setDeferredQuery(search.q);
+  }, [search.q]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDeferredQuery(query);
+      if (query !== search.q)
+        void navigate({ search: (previous) => ({ ...previous, q: query }), replace: true });
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [query, search.q, navigate]);
+  const toggleCategory = (id: string) => {
+    const next = selectedCategories.includes(id)
+      ? selectedCategories.filter((c) => c !== id)
+      : [...selectedCategories, id];
+    void navigate({ search: (previous) => ({ ...previous, cats: next.join(",") }), replace: true });
+  };
+  const clearFilters = () => {
+    setQuery("");
+    setDeferredQuery("");
+    setSelected(null);
+    setHighlight(null);
+    void navigate({
+      search: (previous) => ({ ...previous, q: "", cats: "", context: false }),
+      replace: true,
+    });
+    setFocusRequest((v) => v + 1);
+  };
   const [view, setView] = useState<"force" | "hierarchy" | "3d">("force");
   const [showEdges, setShowEdges] = useState(true);
   const [autoRotate, setAutoRotate] = useState(false);
@@ -96,29 +173,23 @@ function MapForCutoff({
     [graph],
   );
 
-  const matches = useMemo(() => {
-    const q = deferredQuery.trim().toLowerCase();
-    if (!q) return null;
-    const set = new Set<number>();
-    graph.nodes.forEach((n, i) => {
-      if (n.label.toLowerCase().includes(q) || n.tree.toLowerCase().startsWith(q)) set.add(i);
-    });
-    return set;
-  }, [graph, deferredQuery]);
-
-  const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return graph.nodes
-      .map((n, i) => ({ n, i }))
-      .filter(({ n }) => n.label.toLowerCase().includes(q))
-      .sort((a, b) => {
-        const sa = a.n.label.toLowerCase().startsWith(q) ? 0 : 1;
-        const sb = b.n.label.toLowerCase().startsWith(q) ? 0 : 1;
-        return sa - sb || b.n.deg - a.n.deg;
-      })
-      .slice(0, 8);
-  }, [graph, query]);
+  const searchIndex = useMemo(() => mapSearchIndex(graph), [graph]);
+  const matches = useMemo(
+    () => selectMapNodes(graph, searchIndex, deferredQuery, selectedCategories),
+    [graph, searchIndex, deferredQuery, selectedCategories],
+  );
+  const summary = useMemo(() => summarizeMap(graph, matches), [graph, matches]);
+  const suggestions = useMemo(
+    () =>
+      deferredQuery.trim() && matches
+        ? [...matches].slice(0, 8).map((i) => ({ n: graph.nodes[i]!, i }))
+        : [],
+    [graph, matches, deferredQuery],
+  );
+  useEffect(() => {
+    setHighlight(null);
+    if (matches && selected != null && !matches.has(selected)) setSelected(null);
+  }, [matches, selected]);
 
   // ranking padrão vindo do pipeline (com confirmação real pós-corte)
   const precomputed = useMemo(() => {
@@ -134,7 +205,7 @@ function MapForCutoff({
     setTimeout(() => {
       const res = discover(graph, adj, {
         mode,
-        seeds: mode === "seeded" ? seeds : undefined,
+        ...(mode === "seeded" ? { seeds } : {}),
         randomSeed,
         limit: 200,
       });
@@ -153,7 +224,7 @@ function MapForCutoff({
 
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
-      <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-b border-border bg-sidebar p-4 lg:h-full lg:w-[26rem] lg:border-b-0 lg:border-r">
+      <aside className="flex max-h-[45vh] w-full shrink-0 flex-col gap-3 overflow-y-auto border-b border-border bg-sidebar p-4 lg:max-h-none lg:h-full lg:w-[26rem] lg:border-b-0 lg:border-r">
         <div>
           <h1 className="font-display text-lg font-semibold">Mapa da ciência MeSH</h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -192,15 +263,25 @@ function MapForCutoff({
           </TabsList>
         </Tabs>
 
-        <div className="relative">
+        <div
+          className="relative"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false);
+          }}
+        >
           <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar conceito MeSH ou código da árvore…"
+            onFocus={() => setSearchOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setSearchOpen(false);
+            }}
+            aria-label="Buscar conceito MeSH, categoria ou área"
+            placeholder="Buscar conceito MeSH, categoria ou área…"
             className="pl-8"
           />
-          {suggestions.length > 0 && (
+          {searchOpen && suggestions.length > 0 && (
             <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover p-1 shadow-panel">
               {suggestions.map(({ n, i }) => (
                 <li key={n.id}>
@@ -208,6 +289,7 @@ function MapForCutoff({
                     className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-secondary"
                     onClick={() => {
                       setSelected(i);
+                      setSearchOpen(false);
                       setQuery(n.label);
                       if (mode === "seeded" && !seeds.includes(i)) setSeeds((s) => [...s, i]);
                     }}
@@ -222,6 +304,93 @@ function MapForCutoff({
             </ul>
           )}
         </div>
+
+        <section className="panel space-y-3 p-3" aria-label="Filtros por área">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Áreas MeSH</h2>
+            <Button size="sm" variant="ghost" onClick={clearFilters}>
+              Limpar filtros
+            </Button>
+          </div>
+          <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto">
+            {categories.map((c) => (
+              <label key={c.id} className="flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={selectedCategories.includes(c.id)}
+                  onChange={() => toggleCategory(c.id)}
+                />
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: catColor(c.id) }}
+                />
+                <span>
+                  {c.label} <span className="text-muted-foreground">({num(c.count)})</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="unselected"
+              checked={showUnselected}
+              onCheckedChange={(context) =>
+                void navigate({ search: (previous) => ({ ...previous, context }), replace: true })
+              }
+            />
+            <Label htmlFor="unselected" className="text-xs">
+              Mostrar nós não selecionados
+            </Label>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={summary.count === 0}
+            onClick={() => setFocusRequest((v) => v + 1)}
+          >
+            Centralizar resultados
+          </Button>
+        </section>
+        <section
+          className="panel space-y-2 p-3 text-xs"
+          aria-label="Resumo da seleção"
+          aria-live="polite"
+        >
+          <h2 className="text-sm font-semibold">
+            {matches ? "Resumo da seleção" : "Resumo do mapa"}
+          </h2>
+          <p>
+            {num(summary.count)} conceitos · {num(summary.edges)} conexões internas
+          </p>
+          <p>{num(summary.occurrences)} ocorrências conceito–artigo</p>
+          <p className="text-muted-foreground">
+            A soma pode contar um artigo em vários conceitos. Conexões referem-se às arestas
+            exportadas.
+          </p>
+          {summary.count === 0 && <p>Nenhum resultado. Ajuste a busca ou limpe os filtros.</p>}
+          <p>
+            {summary.categories
+              .map(
+                ([id, count]) =>
+                  (categories.find((c) => c.id === id)?.label ?? id) + ": " + num(count),
+              )
+              .join(" · ")}
+          </p>
+          {summary.top.length > 0 && (
+            <p className="text-muted-foreground">Principais conceitos por artigos:</p>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {summary.top.map((i) => (
+              <button
+                key={i}
+                className="rounded bg-secondary px-2 py-1 text-left"
+                onClick={() => setSelected(i)}
+              >
+                {graph.nodes[i]!.label}
+              </button>
+            ))}
+          </div>
+        </section>
 
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-2">
@@ -264,8 +433,9 @@ function MapForCutoff({
           <div className="panel p-3">
             <p className="font-display text-sm font-semibold">{node.label}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Ramo {node.cat} {node.tree ? `· ${node.tree}` : ""} · {num(node.deg)} conexões ·{" "}
-              {num(node.pubs)} artigos
+              {node.id} · {categories.find((c) => c.id === node.cat)?.label ?? node.cat}{" "}
+              {node.tree ? `· ${node.tree}` : ""} · {num(node.deg)} conexões · {num(node.pubs)}{" "}
+              artigos
             </p>
             <Button
               size="sm"
@@ -337,10 +507,7 @@ function MapForCutoff({
         <div className="grid grid-cols-3 gap-2">
           <Stat label="AUC" value={metrics.model.auc.toFixed(3)} />
           <Stat label="Confirmadas" value={pct(metrics.confirmations.rate, 0)} />
-          <Stat
-            label="Lead time"
-            value={`${metrics.confirmations.median_lead_time ?? "—"} a`}
-          />
+          <Stat label="Lead time" value={`${metrics.confirmations.median_lead_time ?? "—"} a`} />
         </div>
 
         <div className="flex items-center justify-between pt-1">
@@ -367,9 +534,7 @@ function MapForCutoff({
                         <span className="font-mono text-[10px] text-muted-foreground">
                           {graph.nodes[p.a]!.cat} ⇢ {graph.nodes[p.c]!.cat}
                         </span>
-                        <span className="font-mono text-[11px] text-primary">
-                          {pct(p.prob, 0)}
-                        </span>
+                        <span className="font-mono text-[11px] text-primary">{pct(p.prob, 0)}</span>
                       </div>
                       <p className="mt-1 text-xs leading-snug">
                         <span className="font-medium">{graph.nodes[p.a]!.label}</span>
@@ -377,7 +542,11 @@ function MapForCutoff({
                         <span className="font-medium">{graph.nodes[p.c]!.label}</span>
                       </p>
                       <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                        via {p.bridges.map((b) => graph.nodes[b]!.label).slice(0, 3).join(", ")}
+                        via{" "}
+                        {p.bridges
+                          .map((b) => graph.nodes[b]!.label)
+                          .slice(0, 3)
+                          .join(", ")}
                       </p>
                       <Link
                         to="/hypotheses"
@@ -446,21 +615,26 @@ function MapForCutoff({
       <div className="relative min-h-[60vh] flex-1">
         {view === "3d" ? (
           <ScienceMap3D
-            graph={graph}
+            graph={displayGraph}
             highlight={highlight}
             matches={matches}
+            showUnselected={showUnselected}
+            focusRequest={focusRequest}
             seeds={seedSet}
             showEdges={showEdges}
             autoRotate={autoRotate}
+            colorMode={colorMode}
             selected={selected}
             onSelect={setSelected}
           />
         ) : (
           <ScienceMap
-            graph={graph}
+            graph={displayGraph}
             layout={view}
             highlight={highlight}
             matches={matches}
+            showUnselected={showUnselected}
+            focusRequest={focusRequest}
             seeds={seedSet}
             colorMode={colorMode}
             showEdges={showEdges}
@@ -468,20 +642,59 @@ function MapForCutoff({
             onSelect={setSelected}
           />
         )}
+        {(layoutPending || layoutFailed) && (
+          <div
+            role="status"
+            className="pointer-events-none absolute left-4 top-4 rounded bg-popover/90 p-2 text-xs"
+          >
+            {layoutPending
+              ? "Organizando comunidades…"
+              : "Layout original preservado: não foi possível preparar comunidades."}
+          </div>
+        )}
+        {matches?.size === 0 && (
+          <div
+            role="status"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          >
+            <p className="rounded bg-popover/95 p-4 text-sm">
+              Nenhum conceito corresponde aos filtros.
+            </p>
+          </div>
+        )}
         <div className="pointer-events-none absolute bottom-4 left-4 flex max-w-[70%] flex-wrap gap-2">
-          {graph.categories.map((c) => (
-            <span
-              key={c.id}
-              className="flex items-center gap-1.5 rounded-full border border-border bg-popover/80 px-2 py-1 text-[10px] backdrop-blur"
-            >
-              <span className="size-2 rounded-full" style={{ backgroundColor: catColor(c.id) }} />
-              {c.label}
+          {colorMode === "category" ? (
+            categories.map((c) => (
+              <span
+                key={c.id}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-popover/80 px-2 py-1 text-[10px] backdrop-blur"
+              >
+                <span className="size-2 rounded-full" style={{ backgroundColor: catColor(c.id) }} />
+                {c.label}
+              </span>
+            ))
+          ) : (
+            <span className="rounded border border-border bg-popover/90 px-3 py-2 text-xs">
+              {colorMode === "degree"
+                ? "Grau: menor → maior"
+                : "Índice de crescimento: −1 → +1 (cores limitadas)"}
+              <span
+                className="mt-1 block h-2 w-44 rounded"
+                style={{
+                  background:
+                    colorMode === "degree"
+                      ? "linear-gradient(to right, hsl(200,85%,45%), hsl(120,85%,55%), hsl(40,85%,65%))"
+                      : "linear-gradient(to right, hsl(20,80%,45%), hsl(90,80%,52%), hsl(160,80%,60%))",
+                }}
+              />
             </span>
-          ))}
+          )}
         </div>
         <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-border bg-popover/80 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur">
           <Zap className="size-3.5 text-primary" />
-          {view === "3d" ? "arraste para girar · scroll para aproximar" : "arraste para navegar · scroll para zoom"}
+          {view === "3d"
+            ? "arraste para girar · scroll para aproximar"
+            : "arraste para navegar · scroll para zoom"}
         </div>
       </div>
     </div>
