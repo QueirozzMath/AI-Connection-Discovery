@@ -228,12 +228,12 @@ def hierarchy_layout(nodes: list[str], trees: dict[str, list[str]]):
 
 
 # --------------------------------------------------------------- features / ABC
-def candidate_pairs(adj, nodes: list[str], rng: random.Random, max_pairs: int, min_cn: int = 3):
+def candidate_pairs(adj, nodes: list[str], rng: random.Random, max_pairs: int, min_cn: int = 3, anchors=None):
     """Pares A-C sem co-ocorrencia direta, com pelo menos min_cn pontes B."""
     nodeset = set(nodes)
     seen: set[tuple[str, str]] = set()
     out: list[tuple[str, str]] = []
-    order = list(nodes)
+    order = list(nodes if anchors is None else anchors)
     rng.shuffle(order)
     for a in order:
         nb_a = adj.get(a, {})
@@ -436,7 +436,8 @@ def run_cutoff(cutoff, recs, corpus_max_year, node_year, label, pair_first, pair
 
     adj_now = adjacency(pair_w, cutoff, keep, min_w=args.min_edge)
     train_cut = cutoff - args.gap
-    adj_train = adjacency(pair_w, train_cut, keep, min_w=args.min_edge)
+    keep_train = {u for u, years in node_year.items() if sum(n for y,n in years.items() if y <= train_cut) >= args.min_pubs}
+    adj_train = adjacency(pair_w, train_cut, keep_train, min_w=args.min_edge)
 
     branch = {u: ((trees.get(u) or ["Z"])[0][0]) for u in keep}
     growth: dict[str, float] = {}
@@ -452,7 +453,9 @@ def run_cutoff(cutoff, recs, corpus_max_year, node_year, label, pair_first, pair
     nodes_train = sorted(adj_train.keys(), key=lambda u: -len(adj_train[u]))
 
     pairs_tr = candidate_pairs(adj_train, nodes_train, rng, args.max_pairs, args.min_cn)
-    X_tr, _ = pair_features(pairs_tr, adj_train, meta)
+    growth_train = {u: float(np.clip(math.log((sum(n for y,n in node_year[u].items() if train_cut-4 <= y <= train_cut)+1)
+        / (sum(n for y,n in node_year[u].items() if train_cut-9 <= y <= train_cut-5)+1)), -2,2)) for u in keep_train}
+    X_tr, _ = pair_features(pairs_tr, adj_train, {**meta, "growth": growth_train})
     y_tr = labels_for(pairs_tr, pair_first, train_cut, cutoff)
 
     pairs_te = candidate_pairs(adj_now, nodes_now, rng, args.max_pairs, args.min_cn)

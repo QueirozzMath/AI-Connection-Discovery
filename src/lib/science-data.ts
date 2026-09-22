@@ -14,9 +14,13 @@ export interface GraphNode {
   pubs: number;
   growth: number;
   growthAvailable?: boolean;
+  growthReason?: string | null;
 }
 
 export interface LinkModel {
+  available?: boolean;
+  reason?: string;
+  trainedThrough?: number;
   type: string;
   mean: number[];
   std: number[];

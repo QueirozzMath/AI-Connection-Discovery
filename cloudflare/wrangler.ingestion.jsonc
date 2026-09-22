@@ -1,0 +1,10 @@
+{
+  "name": "biodiscovery-pubmed-scheduler",
+  "main": "ingestion-worker.ts",
+  "compatibility_date": "2026-09-22",
+  "triggers": { "crons": ["17 5 * * *"] },
+  "queues": {
+    "producers": [{ "binding": "PUBMED_JOBS", "queue": "pubmed-sync" }],
+    "consumers": [{ "queue": "pubmed-sync", "max_batch_size": 1, "max_retries": 5, "dead_letter_queue": "pubmed-sync-failed" }]
+  }
+}

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  type SearchSchemaInput,
   Outlet,
   Link,
   createRootRouteWithContext,
@@ -7,10 +8,10 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import { TemporalProvider, PeriodSelector } from "@/components/TemporalContext";
 import { AppNav } from "@/components/AppNav";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -39,9 +40,6 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -75,6 +73,23 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  validateSearch: (
+    s: SearchSchemaInput & {
+      from?: unknown;
+      to?: unknown;
+      cats?: unknown;
+      q?: unknown;
+      op?: unknown;
+      seedIds?: unknown;
+    },
+  ) => ({
+    cats: typeof s.cats === "string" ? s.cats : "",
+    q: typeof s.q === "string" ? s.q : "",
+    op: s.op === "and" ? ("and" as const) : ("or" as const),
+    seedIds: typeof s.seedIds === "string" ? s.seedIds : "",
+    from: Number.isInteger(Number(s.from)) ? Number(s.from) : undefined,
+    to: Number.isInteger(Number(s.to)) ? Number(s.to) : undefined,
+  }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -127,14 +142,17 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex h-screen flex-col bg-background">
-        <AppNav />
-        <main className="min-h-0 flex-1 overflow-auto grid-backdrop">
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
-        </main>
-      </div>
-      <Toaster position="top-right" richColors />
+      <TemporalProvider>
+        <div className="flex h-screen flex-col bg-background">
+          <AppNav />
+          <PeriodSelector />
+          <main className="min-h-0 flex-1 overflow-auto grid-backdrop">
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            <Outlet />
+          </main>
+        </div>
+        <Toaster position="top-right" richColors />
+      </TemporalProvider>
     </QueryClientProvider>
   );
 }

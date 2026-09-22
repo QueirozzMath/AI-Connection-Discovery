@@ -11,6 +11,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import io
 from pathlib import Path
 import re
 import urllib.parse
@@ -132,7 +133,9 @@ def process(path, root, mesh_only=False):
     temporary = destination.with_suffix(".tmp")
     count = deletes = 0
     try:
-        with gzip.open(temporary, "wt", encoding="utf-8") as output:
+        # Deterministic gzip: rebuilding staging after a crash/host migration must
+        # preserve the immutable import checksum, not include the current clock.
+        with open(temporary, "wb") as raw_output, gzip.GzipFile(filename="", mode="wb", fileobj=raw_output, mtime=0) as compressed, io.TextIOWrapper(compressed, encoding="utf-8", newline="\n") as output:
             for record in iter_events(path, mesh_only):
                 output.write(json.dumps(record, ensure_ascii=False) + "\n")
                 count += 1

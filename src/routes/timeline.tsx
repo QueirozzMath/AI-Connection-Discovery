@@ -1,6 +1,8 @@
+import { useTemporal } from "@/components/TemporalContext";
+import { mapAnalysis } from "@/lib/map-api.functions";
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense } from "react";
+import { useQueries } from "@tanstack/react-query";
+import { Suspense, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -14,7 +16,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { indexQuery, num, pct, timelineQuery } from "@/lib/science-data";
+import { num, pct, type TimelinePoint } from "@/lib/science-data";
 
 export const Route = createFileRoute("/timeline")({
   head: () => ({
@@ -44,8 +46,76 @@ export const Route = createFileRoute("/timeline")({
 });
 
 function TimelinePage() {
-  const { data } = useSuspenseQuery(timelineQuery);
-  const { data: idx } = useSuspenseQuery(indexQuery);
+  const { period, catalog } = useTemporal();
+  const [requested, setRequested] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const years = period
+    ? Array.from({ length: period.endYear - period.startYear + 1 }, (_, i) => period.startYear + i)
+    : [];
+  const page = years.slice(offset, offset + 4);
+  const queries = useQueries({
+    queries: page.map((year) => ({
+      queryKey: [
+        "temporal-analysis",
+        "validate",
+        { startYear: year, endYear: year },
+        catalog?.revision,
+      ],
+      queryFn: () =>
+        mapAnalysis({ data: { startYear: year, endYear: year, operation: "validate" as const } }),
+      enabled: requested && !!catalog,
+      refetchInterval: (query: { state: { data: { status: string } | undefined } }) =>
+        ["pending", "busy"].includes(query.state.data?.status ?? "") ? 2000 : (false as const),
+    })),
+  });
+  const items: TimelinePoint[] = queries.flatMap((q) => {
+    const m = q.data?.metrics;
+    return m
+      ? [
+          {
+            cutoff_year: m.cutoff_year,
+            auc: m.model.auc,
+            auc_ci95: m.model.auc_ci95,
+            n_predicted: m.confirmations.n_predicted,
+            n_confirmed: m.confirmations.n_confirmed,
+            rate: m.confirmations.rate,
+            median_lead_time: m.confirmations.median_lead_time,
+            mean_lead_time: m.confirmations.mean_lead_time ?? null,
+            precision_at_50: m.precision_at_k.find((p) => p.k === 50)?.precision ?? null,
+            positives_rate: m.labels.rate,
+            nodes: m.graph.nodes,
+          },
+        ]
+      : [];
+  });
+  if (!requested || !items.length)
+    return (
+      <div className="space-y-3 p-8">
+        <p>Validação dos anos do período selecionado, até quatro cortes por página.</p>
+        <button onClick={() => setRequested(true)} className="underline">
+          Calcular cortes {page.join(", ")}
+        </button>
+        {queries.map((q, i) => (
+          <p key={page[i]}>
+            {page[i]}:{" "}
+            {q.isError
+              ? "Falha na análise"
+              : (q.data?.reason ?? (requested ? "Aguardando análise…" : "Não calculado"))}
+          </p>
+        ))}
+        {offset + 4 < years.length && (
+          <button
+            className="underline"
+            onClick={() => {
+              setOffset(offset + 4);
+              setRequested(false);
+            }}
+          >
+            Próximos cortes
+          </button>
+        )}
+      </div>
+    );
   const axis = { stroke: "oklch(0.7 0.024 246)", fontSize: 11 };
   const tooltip = {
     contentStyle: {
@@ -56,7 +126,6 @@ function TimelinePage() {
     },
   } as const;
 
-  const items = data.items;
   const totalConfirmed = items.reduce((s, i) => s + i.n_confirmed, 0);
   const totalPredicted = items.reduce((s, i) => s + i.n_predicted, 0);
   const leads = items.map((i) => i.mean_lead_time).filter((v): v is number => v != null);
@@ -66,14 +135,36 @@ function TimelinePage() {
       <header>
         <h1 className="font-display text-2xl font-semibold">Eficácia por ano de corte</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Cada corte treina e avalia o modelo só com a literatura disponível naquele ano.
-          Corpus real: {num(idx.n_articles)} artigos do PubMed entre {idx.corpus_years[0]} e{" "}
-          {idx.corpus_years[1]}.
+          Cada corte treina e avalia o modelo só com a literatura disponível naquele ano. Corpus
+          real: {num(catalog?.articles ?? 0)} artigos do PubMed entre {catalog?.start} e{" "}
+          {catalog?.end}.
         </p>
       </header>
 
+      <div className="text-xs">
+        {queries.map((q, i) => (
+          <p key={page[i]}>
+            {page[i]}: {q.data?.reason ?? (q.data?.metrics ? "Concluído" : "Processando…")}
+          </p>
+        ))}
+        {offset + 4 < years.length && (
+          <button
+            className="underline"
+            onClick={() => {
+              setOffset(offset + 4);
+              setRequested(false);
+            }}
+          >
+            Próximos cortes
+          </button>
+        )}
+      </div>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card label="Cortes avaliados" value={String(items.length)} sub={idx.cutoffs.join(" · ")} />
+        <Card
+          label="Cortes avaliados"
+          value={String(items.length)}
+          sub={items.map((i) => i.cutoff_year).join(" · ")}
+        />
         <Card
           label="Conexões confirmadas"
           value={`${num(totalConfirmed)}/${num(totalPredicted)}`}
@@ -81,7 +172,11 @@ function TimelinePage() {
         />
         <Card
           label="Tempo médio até confirmar"
-          value={leads.length ? `${(leads.reduce((a, b) => a + b, 0) / leads.length).toFixed(1)} anos` : "—"}
+          value={
+            leads.length
+              ? `${(leads.reduce((a, b) => a + b, 0) / leads.length).toFixed(1)} anos`
+              : "—"
+          }
           sub="média entre os cortes"
         />
         <Card
@@ -104,13 +199,7 @@ function TimelinePage() {
               <YAxis yAxisId="r" orientation="right" domain={[0, 0.3]} {...axis} />
               <Tooltip {...tooltip} />
               <Bar yAxisId="l" dataKey="n_confirmed" fill="var(--color-accent)" radius={4} />
-              <Line
-                yAxisId="r"
-                dataKey="rate"
-                stroke="var(--color-primary)"
-                strokeWidth={2}
-                dot
-              />
+              <Line yAxisId="r" dataKey="rate" stroke="var(--color-primary)" strokeWidth={2} dot />
             </ComposedChart>
           </ResponsiveContainer>
         </Panel>
@@ -142,12 +231,7 @@ function TimelinePage() {
               <YAxis domain={[0.5, 1]} {...axis} />
               <Tooltip {...tooltip} />
               <Line dataKey="auc" stroke="var(--color-primary)" strokeWidth={2} dot />
-              <Line
-                dataKey="precision_at_50"
-                stroke="var(--color-chart-3)"
-                strokeWidth={2}
-                dot
-              />
+              <Line dataKey="precision_at_50" stroke="var(--color-chart-3)" strokeWidth={2} dot />
             </LineChart>
           </ResponsiveContainer>
         </Panel>

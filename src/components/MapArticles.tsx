@@ -1,3 +1,4 @@
+import { useTemporal } from "./TemporalContext";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { mapArticles } from "@/lib/map-api.functions";
@@ -85,11 +86,12 @@ export function MapArticles({
   end: number;
   meshIds: string[];
 }) {
+  const { revision } = useTemporal();
   const [cursor, setCursor] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "network">("list");
   const result = useQuery({
-    queryKey: ["map-articles", start, end, meshIds, cursor],
-    queryFn: () => mapArticles({ data: { start, end, meshIds, cursor } }),
+    queryKey: ["map-articles", start, end, meshIds, cursor, revision],
+    queryFn: () => mapArticles({ data: { startYear: start, endYear: end, meshIds, cursor } }),
     staleTime: 5 * 60_000,
     retry: 1,
   });

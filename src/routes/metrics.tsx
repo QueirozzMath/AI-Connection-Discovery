@@ -1,5 +1,6 @@
+import { useTemporalAnalysis } from "@/hooks/use-temporal-analysis";
+import type { Metrics } from "@/lib/science-data";
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import {
   Bar,
@@ -15,16 +16,8 @@ import {
   YAxis,
 } from "recharts";
 
-import { indexQuery, metricsQuery, num, pct } from "@/lib/science-data";
+import { num, pct } from "@/lib/science-data";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 export const Route = createFileRoute("/metrics")({
   head: () => ({
@@ -54,25 +47,40 @@ export const Route = createFileRoute("/metrics")({
 });
 
 function MetricsGate() {
-  const { data: idx } = useSuspenseQuery(indexQuery);
-  const [cutoff, setCutoff] = useState(idx.default_cutoff);
-  return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
-      <MetricsPage cutoff={cutoff} cutoffs={idx.cutoffs} onCutoff={setCutoff} />
-    </Suspense>
-  );
+  const [requested, setRequested] = useState(false);
+  const query = useTemporalAnalysis("validate", requested);
+  if (!requested)
+    return (
+      <div className="p-8">
+        <button
+          className="rounded bg-primary p-3 text-primary-foreground"
+          onClick={() => setRequested(true)}
+        >
+          Validar com o corte do período selecionado
+        </button>
+      </div>
+    );
+  if (query.isError)
+    return (
+      <div role="alert" className="p-8">
+        Não foi possível executar a validação.
+      </div>
+    );
+  if (!query.data || query.data.status === "pending" || query.data.status === "busy")
+    return (
+      <div role="status" className="p-8">
+        Treinando e avaliando o modelo em segundo plano?
+      </div>
+    );
+  if (!query.data.metrics)
+    return (
+      <div role="status" className="p-8">
+        {query.data.reason ?? "Dados insuficientes para validação temporal neste corte."}
+      </div>
+    );
+  return <MetricsPage m={query.data.metrics} />;
 }
-
-function MetricsPage({
-  cutoff,
-  cutoffs,
-  onCutoff,
-}: {
-  cutoff: number;
-  cutoffs: number[];
-  onCutoff: (v: number) => void;
-}) {
-  const { data: m } = useSuspenseQuery(metricsQuery(cutoff));
+function MetricsPage({ m }: { m: Metrics }) {
   const axis = { stroke: "oklch(0.7 0.024 246)", fontSize: 11 };
   const tooltip = {
     contentStyle: {
@@ -82,7 +90,6 @@ function MetricsPage({
       fontSize: 12,
     },
   } as const;
-
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -142,8 +149,8 @@ function MetricsPage({
           </ResponsiveContainer>
           {m.delong_vs_best_baseline && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Teste de DeLong contra o melhor baseline: z ={" "}
-              {m.delong_vs_best_baseline.z.toFixed(2)}, p ={" "}
+              Teste de DeLong contra o melhor baseline: z = {m.delong_vs_best_baseline.z.toFixed(2)}
+              , p ={" "}
               {m.delong_vs_best_baseline.p < 0.001
                 ? "<0,001"
                 : m.delong_vs_best_baseline.p.toFixed(4)}
@@ -175,11 +182,7 @@ function MetricsPage({
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={m.calibration.bins}>
               <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.03 253)" />
-              <XAxis
-                dataKey="p_pred"
-                tickFormatter={(v: number) => v.toFixed(1)}
-                {...axis}
-              />
+              <XAxis dataKey="p_pred" tickFormatter={(v: number) => v.toFixed(1)} {...axis} />
               <YAxis domain={[0, 1]} {...axis} />
               <Tooltip {...tooltip} />
               <Line dataKey="p_obs" stroke="var(--color-primary)" strokeWidth={2} dot />
@@ -230,7 +233,7 @@ function MetricsPage({
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <Item k="Conceitos (nós)" v={num(m.graph.nodes)} />
             <Item k="Arestas pré-corte" v={num(m.graph.edges_pre)} />
-            <Item k="Novas arestas pós-corte" v={num(m.graph.edges_post_new)} />
+            <Item k="Pares de teste que surgiram após o corte" v={num(m.graph.edges_post_new)} />
             <Item k="Densidade" v={m.graph.density.toExponential(2)} />
             <Item k="Pares avaliados" v={num(m.labels.n)} />
             <Item k="Taxa base de positivos" v={pct(m.labels.rate)} />

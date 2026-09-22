@@ -1,5 +1,9 @@
+import { mapPeriodGraph } from "@/lib/map-api.functions";
+import { selectKeywordNodes, selectMapNodes, mapSearchIndex } from "@/lib/map-selection";
+import { useTemporal } from "@/components/TemporalContext";
+import { useTemporalAnalysis } from "@/hooks/use-temporal-analysis";
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Suspense, useMemo, useState } from "react";
 import { z } from "zod";
@@ -7,7 +11,7 @@ import { fallback, zodValidator } from "@tanstack/zod-adapter";
 import { BrainCircuit, FlaskConical, Loader2, SearchCheck, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { candidatesQuery, indexQuery, pct, type Candidate } from "@/lib/science-data";
+import { pct, type Candidate } from "@/lib/science-data";
 import {
   generateHypothesis,
   verifyHypothesis,
@@ -22,6 +26,8 @@ import { Progress } from "@/components/ui/progress";
 const searchSchema = z.object({
   a: fallback(z.string(), "").default(""),
   c: fallback(z.string(), "").default(""),
+  from: z.number().optional(),
+  to: z.number().optional(),
   cutoff: fallback(z.number(), 0).default(0),
 });
 
@@ -61,28 +67,97 @@ const VERDICTS: Record<string, { label: string; className: string }> = {
 };
 
 function HypothesesPage() {
-  const { data: idx } = useSuspenseQuery(indexQuery);
+  const { period, catalog } = useTemporal();
   const search = Route.useSearch();
-  const cutoff = idx.cutoffs.includes(search.cutoff) ? search.cutoff : idx.default_cutoff;
-  const { data } = useSuspenseQuery(candidatesQuery(cutoff));
+  const graphQuery = useQuery({
+    queryKey: ["period-graph", period, catalog?.revision],
+    queryFn: () => mapPeriodGraph({ data: period! }),
+    enabled: !!period && !!catalog,
+  });
+  const graph = graphQuery.data;
+  const allowed = useMemo(() => {
+    if (!graph) return null;
+    const filtered = selectMapNodes(
+      graph,
+      mapSearchIndex(graph),
+      search.q,
+      search.cats.split(",").filter(Boolean),
+      search.op,
+    );
+    const seeds = search.seedIds
+      .split(",")
+      .map((id) => graph.nodes.findIndex((n) => n.id === id))
+      .filter((i) => i >= 0);
+    return selectKeywordNodes(graph, filtered, seeds);
+  }, [graph, search.q, search.cats, search.op, search.seedIds]);
+  const allowedIds = useMemo(
+    () => (allowed && graph ? [...allowed].map((i) => graph.nodes[i]!.id) : undefined),
+    [allowed, graph],
+  );
+  const seedIds = useMemo(
+    () => (search.seedIds ? search.seedIds.split(",") : undefined),
+    [search.seedIds],
+  );
+  const query = useTemporalAnalysis("explore", !!graph, allowedIds, seedIds);
+  const items = useMemo(
+    () =>
+      (query.data?.items ?? []).filter((item) => {
+        if (!graph) return false;
+        const indices = [item.a_ui, item.c_ui].map((id) =>
+          graph.nodes.findIndex((n) => n.id === id),
+        );
+        const bridges = item.intermediaries.map((label) =>
+          graph.nodes.findIndex((n) => n.label === label),
+        );
+        return [...indices, ...bridges].every((i) => i >= 0 && (!allowed || allowed.has(i)));
+      }),
+    [graph, query.data, allowed],
+  );
+  if (!period || !catalog) return <div className="p-8">Aguardando o serviço científico.</div>;
+  if (query.isError || graphQuery.isError)
+    return (
+      <div role="alert" className="p-8">
+        Falha ao consultar os candidatos.
+      </div>
+    );
+  if (!query.data || query.data.status === "pending" || query.data.status === "busy")
+    return <div className="p-8">Calibrando candidatos com os dados permitidos…</div>;
+  if (!graph || graphQuery.isPending)
+    return <div className="p-8">Carregando universo do período…</div>;
+  if (!items.length)
+    return <div className="p-8">{query.data.reason ?? "Nenhum par elegível neste período."}</div>;
+  return (
+    <HypothesesContent
+      key={`${period.startYear}:${period.endYear}:${catalog.revision}:${search.cats}:${search.op}:${search.q}:${search.seedIds}`}
+      data={{ items }}
+      search={search}
+      cutoff={period.endYear}
+      startYear={period.startYear}
+      meshIds={(allowed ? [...allowed] : graph.nodes.map((_, i) => i)).map(
+        (i) => graph.nodes[i]!.id,
+      )}
+    />
+  );
+}
+function HypothesesContent({
+  data,
+  search,
+  cutoff,
+  startYear,
+  meshIds,
+}: {
+  data: { items: Candidate[] };
+  search: { a: string; c: string };
+  cutoff: number;
+  startYear: number;
+  meshIds: string[];
+}) {
   const runGenerate = useServerFn(generateHypothesis);
   const runVerify = useServerFn(verifyHypothesis);
 
   const initial = useMemo(() => {
     if (search.a && search.c) {
-      return (
-        data.items.find((i) => i.a === search.a && i.c === search.c) ?? {
-          rank: 0,
-          a: search.a,
-          c: search.c,
-          prob: 0.5,
-          confirmed: false,
-          first_year: null,
-          lead_time_years: null,
-          intermediaries: [],
-          features: {},
-        }
-      );
+      return data.items.find((i) => i.a === search.a && i.c === search.c) ?? data.items[0]!;
     }
     return data.items[0]!;
   }, [data.items, search.a, search.c]);
@@ -104,9 +179,9 @@ function HypothesesPage() {
         data: {
           a: pair.a,
           c: pair.c,
-          intermediaries: pair.intermediaries,
-          prob: pair.prob,
-          cutoffYear: cutoff,
+          startYear,
+          endYear: cutoff,
+          meshIds,
         },
       });
       setResults((r) => ({ ...r, [key]: res }));
@@ -130,7 +205,9 @@ function HypothesesPage() {
         data: {
           a: pair.a,
           c: pair.c,
-          cutoffYear: cutoff,
+          startYear,
+          endYear: cutoff,
+          meshIds,
           hypothesis: result.hypothesis,
           mechanism: result.mechanism,
           prediction: result.testable_prediction,
@@ -149,7 +226,8 @@ function HypothesesPage() {
       <aside className="w-full shrink-0 border-b border-border bg-sidebar p-4 lg:h-full lg:w-80 lg:border-b-0 lg:border-r">
         <h1 className="font-display text-lg font-semibold">Agentes de hipótese</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Corte {cutoff}: cada agente vê apenas artigos reais do PubMed publicados até esse ano.
+          Contexto de {startYear} a {cutoff}: artigos reais do corpus selecionado. A verificação usa
+          somente artigos posteriores a {cutoff}.
         </p>
         <ScrollArea className="mt-3 h-[calc(100%-5rem)] rounded-lg border border-border">
           <ul className="divide-y divide-border">
@@ -183,7 +261,7 @@ function HypothesesPage() {
                   conexão surgiu em {pair.first_year} (+{pair.lead_time_years} anos)
                 </Badge>
               ) : (
-                <Badge variant="outline">conexão ainda não observada</Badge>
+                <Badge variant="outline">não observada até o corte</Badge>
               )}
               <Badge variant="outline">p = {pct(pair.prob)}</Badge>
               <Badge variant="outline">corte {cutoff}</Badge>
@@ -240,6 +318,24 @@ function HypothesesPage() {
                 <Block title="Hipótese" body={result.hypothesis} />
                 <Block title="Mecanismo proposto" body={result.mechanism} />
                 <Block title="Raciocínio pela ponte B" body={result.bridge_reasoning} />
+                <div className="mt-4 text-xs text-muted-foreground">
+                  <p>Artigos fornecidos ao agente:</p>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {[...new Set([...result.evidence_seen.a, ...result.evidence_seen.c])].map(
+                      (pmid) => (
+                        <a
+                          key={pmid}
+                          href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}/`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary underline"
+                        >
+                          PMID {pmid}
+                        </a>
+                      ),
+                    )}
+                  </div>
+                </div>
               </section>
 
               <section className="panel p-5">
@@ -267,7 +363,9 @@ function HypothesesPage() {
                 <Badge className={VERDICTS[check.verdict]?.className}>
                   {VERDICTS[check.verdict]?.label ?? check.verdict}
                 </Badge>
-                <Badge variant="outline">{check.n_articles} artigos pós-{cutoff}</Badge>
+                <Badge variant="outline">
+                  {check.n_articles} artigos pós-{cutoff}
+                </Badge>
                 {check.first_year && (
                   <Badge variant="outline">primeiro em {check.first_year}</Badge>
                 )}
