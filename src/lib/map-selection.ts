@@ -18,15 +18,36 @@ export function selectMapNodes(
   index: string[],
   query: string,
   categories: string[],
+  operator: "and" | "or" = "or",
+  coverage?: Set<string>[],
 ) {
   const q = normalizeMapText(query.trim());
   if (!q && !categories.length) return null;
   const cats = new Set(categories);
+  const neighbourhood =
+    operator === "and" && cats.size ? (coverage ?? categoryCoverage(graph)) : undefined;
   const result = new Set<number>();
   graph.nodes.forEach((n, i) => {
-    if ((!cats.size || cats.has(n.cat)) && index[i]!.includes(q)) result.add(i);
+    const inCategory =
+      !cats.size ||
+      (cats.has(n.cat) &&
+        (operator === "or" || categories.every((cat) => neighbourhood![i]!.has(cat))));
+    if (inCategory && index[i]!.includes(q)) result.add(i);
   });
   return result;
+}
+
+/** Closed one-hop neighbourhood: membership itself plus real co-occurrence neighbours.
+ * A concept still has exactly one primary category. AND is a cross-category bridge,
+ * not a claim that all categories co-occurred in the same article.
+ */
+export function categoryCoverage(graph: ScienceGraph) {
+  const coverage = graph.nodes.map((node) => new Set([node.cat]));
+  for (const [a, b] of graph.edges) {
+    coverage[a]!.add(graph.nodes[b]!.cat);
+    coverage[b]!.add(graph.nodes[a]!.cat);
+  }
+  return coverage;
 }
 
 export function summarizeMap(graph: ScienceGraph, matches: Set<number> | null) {
@@ -52,6 +73,6 @@ export function summarizeMap(graph: ScienceGraph, matches: Set<number> | null) {
     weight,
     occurrences,
     top,
-    categories: [...categories].sort((a, b) => b[1] - a[1]).slice(0, 3),
+    categories: [...categories].sort((a, b) => b[1] - a[1]),
   };
 }

@@ -14,7 +14,12 @@ export interface MapHighlight {
   confirmed?: boolean;
 }
 
+import { exportMapCanvas, type MapCommand, type MapTool } from "@/lib/map-navigation";
+
 interface Props {
+  command?: MapCommand;
+  tool?: MapTool;
+  onHover?: (node: number | null) => void;
   graph: ScienceGraph;
   layout: "force" | "hierarchy";
   highlight?: MapHighlight | null;
@@ -29,6 +34,9 @@ interface Props {
 }
 
 export function ScienceMap({
+  command,
+  tool = "navigate",
+  onHover,
   graph,
   layout,
   highlight,
@@ -46,6 +54,13 @@ export function ScienceMap({
   const viewRef = useRef<View>({ scale: 3, tx: 0, ty: 0 });
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
 
+  const lastHover = useRef<number | null>(null);
+  const publishHover = (node: number | null) => {
+    if (lastHover.current !== node) {
+      lastHover.current = node;
+      onHover?.(node);
+    }
+  };
   const maxDeg = useMemo(() => graph.nodes.reduce((m, n) => Math.max(m, n.deg), 1), [graph]);
 
   const X = useCallback(
@@ -120,6 +135,8 @@ export function ScienceMap({
       if (seeds?.has(i) && (!matches || matches.has(i))) alpha = 1;
 
       ctx.globalAlpha = alpha;
+      if (colorMode === "growth" && (n.growthAvailable === false || !Number.isFinite(n.growth)))
+        color = "#9aa4b8";
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(cx, cy, seeds?.has(i) ? r + 2.5 : r, 0, Math.PI * 2);
@@ -213,40 +230,71 @@ export function ScienceMap({
     Y,
   ]);
 
+  const handledCommand = useRef(command?.sequence);
   const drawRef = useRef(draw);
   useEffect(() => {
     drawRef.current = draw;
   }, [draw]);
 
-  // Fit only when the selection/layout changes, never on hover or pan.
-  useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap || matches?.size === 0 || !graph.nodes.length) return;
-    let minX = Infinity,
-      maxX = -Infinity,
-      minY = Infinity,
-      maxY = -Infinity;
-    for (let i = 0; i < graph.nodes.length; i++) {
-      if (matches && !matches.has(i)) continue;
-      minX = Math.min(minX, X(i));
-      maxX = Math.max(maxX, X(i));
-      minY = Math.min(minY, Y(i));
-      maxY = Math.max(maxY, Y(i));
-    }
-    const scale = Math.min(
-      25,
-      Math.max(
-        0.1,
-        Math.min(
-          (wrap.clientWidth * 0.82) / Math.max(12, maxX - minX),
-          (wrap.clientHeight * 0.78) / Math.max(12, maxY - minY),
+  const fitView = useCallback(
+    (global = false) => {
+      const wrap = wrapRef.current;
+      if (!wrap || (!global && matches?.size === 0) || !graph.nodes.length) return;
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
+      for (let i = 0; i < graph.nodes.length; i++) {
+        if (!global && matches && !matches.has(i)) continue;
+        minX = Math.min(minX, X(i));
+        maxX = Math.max(maxX, X(i));
+        minY = Math.min(minY, Y(i));
+        maxY = Math.max(maxY, Y(i));
+      }
+      const scale = Math.min(
+        25,
+        Math.max(
+          0.1,
+          Math.min(
+            (wrap.clientWidth * 0.82) / Math.max(12, maxX - minX),
+            (wrap.clientHeight * 0.78) / Math.max(12, maxY - minY),
+          ),
         ),
-      ),
+      );
+      viewRef.current = {
+        scale,
+        tx: (-(minX + maxX) / 2) * scale,
+        ty: (-(minY + maxY) / 2) * scale,
+      };
+      setHover(null);
+      drawRef.current();
+    },
+    [graph, matches, X, Y],
+  );
+  useEffect(() => {
+    fitView();
+  }, [fitView, layout, focusRequest]);
+
+  useEffect(() => {
+    if (!command || handledCommand.current === command.sequence) return;
+    handledCommand.current = command.sequence;
+    if (command.action === "export") {
+      exportMapCanvas(canvasRef.current);
+      return;
+    }
+    if (command.action === "fit" || command.action === "reset") {
+      fitView(command.action === "reset");
+      return;
+    }
+    const v = viewRef.current;
+    const scale = Math.min(
+      400,
+      Math.max(0.1, v.scale * (command.action === "zoom-in" ? 1.35 : 1 / 1.35)),
     );
-    viewRef.current = { scale, tx: (-(minX + maxX) / 2) * scale, ty: (-(minY + maxY) / 2) * scale };
-    setHover(null);
+    const factor = scale / v.scale;
+    viewRef.current = { scale, tx: v.tx * factor, ty: v.ty * factor };
     drawRef.current();
-  }, [graph, matches, layout, focusRequest, X, Y]);
+  }, [command, fitView]);
 
   useEffect(() => {
     draw();
@@ -298,6 +346,7 @@ export function ScienceMap({
     return best;
   };
 
+  const [region, setRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
 
   return (
@@ -317,6 +366,7 @@ export function ScienceMap({
       }}
       onPointerDown={(e) => {
         setHover(null);
+        publishHover(null);
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         dragRef.current = {
           x: e.clientX,
@@ -328,6 +378,16 @@ export function ScienceMap({
       onPointerMove={(e) => {
         const d = dragRef.current;
         if (d) {
+          if (tool === "region") {
+            const rect = wrapRef.current!.getBoundingClientRect();
+            setRegion({
+              x: Math.min(d.x, e.clientX) - rect.left,
+              y: Math.min(d.y, e.clientY) - rect.top,
+              w: Math.abs(e.clientX - d.x),
+              h: Math.abs(e.clientY - d.y),
+            });
+            return;
+          }
           viewRef.current = {
             ...viewRef.current,
             tx: d.tx + (e.clientX - d.x),
@@ -337,27 +397,53 @@ export function ScienceMap({
           return;
         }
         const i = pick(e.clientX, e.clientY);
+        publishHover(i);
         const rect = wrapRef.current!.getBoundingClientRect();
         setHover(i == null ? null : { i, x: e.clientX - rect.left, y: e.clientY - rect.top });
       }}
       onPointerUp={(e) => {
         const d = dragRef.current;
         dragRef.current = null;
+        if (tool === "region" && region && region.w > 8 && region.h > 8) {
+          const wrap = wrapRef.current!;
+          const v = viewRef.current;
+          const x = (region.x + region.w / 2 - wrap.clientWidth / 2 - v.tx) / v.scale;
+          const y = (region.y + region.h / 2 - wrap.clientHeight / 2 - v.ty) / v.scale;
+          const scale = Math.min(
+            400,
+            v.scale * Math.min(wrap.clientWidth / region.w, wrap.clientHeight / region.h) * 0.85,
+          );
+          viewRef.current = { scale, tx: -x * scale, ty: -y * scale };
+          setRegion(null);
+          draw();
+          return;
+        }
+        setRegion(null);
         if (d && Math.abs(e.clientX - d.x) < 4 && Math.abs(e.clientY - d.y) < 4) {
           onSelect(pick(e.clientX, e.clientY));
         }
       }}
       onPointerCancel={() => {
         dragRef.current = null;
+        setRegion(null);
         setHover(null);
+        publishHover(null);
       }}
       onPointerLeave={() => {
         dragRef.current = null;
+        setRegion(null);
         setHover(null);
+        publishHover(null);
       }}
     >
       <canvas ref={canvasRef} className="h-full w-full" />
-      {hover && (!matches || matches.has(hover.i)) && graph.nodes[hover.i] && (
+      {region && (
+        <div
+          className="pointer-events-none absolute border border-primary bg-primary/10"
+          style={{ left: region.x, top: region.y, width: region.w, height: region.h }}
+        />
+      )}
+      {!onHover && hover && (!matches || matches.has(hover.i)) && graph.nodes[hover.i] && (
         <div
           className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
           style={{
@@ -379,7 +465,11 @@ export function ScienceMap({
             {graph.nodes[hover.i]!.tree ? ` · ${graph.nodes[hover.i]!.tree}` : ""}
           </p>
           <p className="mt-1 text-muted-foreground">
-            Índice de crescimento: {graph.nodes[hover.i]!.growth.toFixed(3)}
+            Índice de crescimento:{" "}
+            {graph.nodes[hover.i]!.growthAvailable !== false &&
+            Number.isFinite(graph.nodes[hover.i]!.growth)
+              ? graph.nodes[hover.i]!.growth.toFixed(3)
+              : "indisponível"}
           </p>
         </div>
       )}

@@ -13,6 +13,7 @@ export interface GraphNode {
   deg: number;
   pubs: number;
   growth: number;
+  growthAvailable?: boolean;
 }
 
 export interface LinkModel {

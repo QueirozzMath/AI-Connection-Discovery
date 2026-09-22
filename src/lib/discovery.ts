@@ -101,6 +101,7 @@ export function scorePair(
   const union = new Set([...ma.keys(), ...mc.keys()]).size || 1;
   const na = graph.nodes[a]!;
   const nc = graph.nodes[c]!;
+  if (na.growthAvailable === false || nc.growthAvailable === false) return null;
   const drugDisease =
     (na.cat === "D" || nc.cat === "D") &&
     (na.cat === "C" || nc.cat === "C" || na.cat === "F" || nc.cat === "F")
@@ -149,6 +150,7 @@ export interface DiscoveryOptions {
   randomSeed?: number;
   sampleNodes?: number;
   limit?: number;
+  allowed?: Set<number> | null;
 }
 
 /** Infere pares A–C sem co-ocorrência e ranqueia pela probabilidade do modelo. */
@@ -163,11 +165,11 @@ export function discover(
 
   const anchors: number[] =
     opts.mode === "seeded" && opts.seeds?.length
-      ? opts.seeds
+      ? opts.seeds.filter((i) => !opts.allowed || opts.allowed.has(i))
       : (() => {
           const rnd = mulberry32(opts.randomSeed ?? 42);
           const order = Array.from({ length: n }, (_, i) => i)
-            .filter((i) => adj.map[i]!.size >= 4)
+            .filter((i) => (!opts.allowed || opts.allowed.has(i)) && adj.map[i]!.size >= 4)
             .sort((x, y) => adj.map[y]!.size - adj.map[x]!.size)
             .slice(0, Math.min(n, 4000));
           for (let i = order.length - 1; i > 0; i--) {
@@ -180,7 +182,9 @@ export function discover(
   for (const a of anchors) {
     const counts = new Map<number, number>();
     for (const b of adj.map[a]!.keys()) {
+      if (opts.allowed && !opts.allowed.has(b)) continue;
       for (const c of adj.map[b]!.keys()) {
+        if (opts.allowed && !opts.allowed.has(c)) continue;
         if (c === a || adj.map[a]!.has(c)) continue;
         counts.set(c, (counts.get(c) ?? 0) + 1);
       }

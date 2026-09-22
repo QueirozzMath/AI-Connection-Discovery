@@ -2,12 +2,77 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { computeMapLayout } from "../src/lib/map-layout.ts";
+import { categoryCoverage } from "../src/lib/map-selection.ts";
+import { categoryLayers } from "../src/lib/map-layers.ts";
+import { buildAdjacency, discover } from "../src/lib/discovery.ts";
 import { mapSearchIndex, selectMapNodes, summarizeMap } from "../src/lib/map-selection.ts";
 
 const load = (year) =>
   JSON.parse(readFileSync(new URL(`../public/data/graph-${year}.json`, import.meta.url), "utf8"));
 const graph = load(2018);
 const index = mapSearchIndex(graph);
+
+test("AND uses genuine cross-category neighbourhoods and composes with search", () => {
+  const coverage = categoryCoverage(graph);
+  const cats = ["C", "D", "E"];
+  const or = selectMapNodes(graph, index, "", cats, "or", coverage);
+  const and = selectMapNodes(graph, index, "", cats, "and", coverage);
+  assert.ok(and.size > 0 && and.size < or.size);
+  for (const i of and) {
+    assert.ok(cats.includes(graph.nodes[i].cat));
+    const adjacent = new Set([graph.nodes[i].cat]);
+    for (const [a, b] of graph.edges) {
+      if (a === i) adjacent.add(graph.nodes[b].cat);
+      if (b === i) adjacent.add(graph.nodes[a].cat);
+    }
+    assert.ok(cats.every((cat) => adjacent.has(cat)));
+  }
+  const query = selectMapNodes(graph, index, "cancer", cats, "and", coverage);
+  assert.ok([...query].every((i) => and.has(i) && index[i].includes("cancer")));
+  assert.equal(selectMapNodes(graph, index, "", [], "and", coverage), null);
+  assert.deepEqual(
+    selectMapNodes(graph, index, "", ["C"], "and", coverage),
+    selectMapNodes(graph, index, "", ["C"], "or", coverage),
+  );
+});
+
+test("3D layers preserve relational coordinates and encode real categories in Z", () => {
+  const layered = categoryLayers(graph);
+  const height = new Map();
+  layered.graph.nodes.forEach((node, i) => {
+    assert.equal(node.x, graph.nodes[i].x);
+    assert.equal(node.y, graph.nodes[i].y);
+    if (height.has(node.cat)) assert.equal(node.z, height.get(node.cat));
+    height.set(node.cat, node.z);
+  });
+  assert.equal(new Set(height.values()).size, height.size);
+  assert.equal(layered.graph.edges, graph.edges);
+  assert.deepEqual(categoryLayers(graph), layered);
+});
+
+test("discovery cannot escape the category/query subgraph", () => {
+  const allowed = new Set([...selectMapNodes(graph, index, "", ["C", "D"])].slice(0, 150));
+  const subgraph = {
+    ...graph,
+    edges: graph.edges.filter(([a, b]) => allowed.has(a) && allowed.has(b)),
+  };
+  const results = discover(subgraph, buildAdjacency(subgraph), {
+    mode: "global",
+    allowed,
+    sampleNodes: 20,
+    limit: 20,
+  });
+  for (const result of results)
+    assert.ok([result.a, result.c, ...result.bridges].every((i) => allowed.has(i)));
+  assert.deepEqual(
+    discover(subgraph, buildAdjacency(subgraph), {
+      mode: "seeded",
+      allowed: new Set(),
+      seeds: [0],
+    }),
+    [],
+  );
+});
 
 test("real data: category union, search intersection, identifier, tree, reset and empty results", () => {
   assert.equal(selectMapNodes(graph, index, "", []), null);
