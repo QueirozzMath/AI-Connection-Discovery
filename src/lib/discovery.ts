@@ -8,28 +8,29 @@ export interface Adjacency {
 }
 
 export function buildAdjacency(graph: ScienceGraph): Adjacency {
+  // Node and edge indices are validated by the graph export; loops stay within allocated arrays.
   const n = graph.nodes.length;
   const counts = new Int32Array(n);
   for (const [a, b] of graph.edges) {
-    counts[a]++;
-    counts[b]++;
+    counts[a]!++;
+    counts[b]!++;
   }
   const nb: Int32Array[] = new Array(n);
   const wt: Float32Array[] = new Array(n);
   const fill = new Int32Array(n);
   for (let i = 0; i < n; i++) {
-    nb[i] = new Int32Array(counts[i]);
-    wt[i] = new Float32Array(counts[i]);
+    nb[i] = new Int32Array(counts[i]!);
+    wt[i] = new Float32Array(counts[i]!);
   }
   for (const [a, b, w] of graph.edges) {
-    nb[a][fill[a]] = b;
-    wt[a][fill[a]++] = w;
-    nb[b][fill[b]] = a;
-    wt[b][fill[b]++] = w;
+    nb[a]![fill[a]!] = b;
+    wt[a]![fill[a]!++] = w;
+    nb[b]![fill[b]!] = a;
+    wt[b]![fill[b]!++] = w;
   }
   const map = nb.map((row, i) => {
     const m = new Map<number, number>();
-    for (let k = 0; k < row.length; k++) m.set(row[k], wt[i][k]);
+    for (let k = 0; k < row.length; k++) m.set(row[k]!, wt[i]![k]!);
     return m;
   });
   return { nb, wt, map };
@@ -63,8 +64,8 @@ export function scorePair(
   a: number,
   c: number,
 ): InferredPair | null {
-  const ma = adj.map[a];
-  const mc = adj.map[c];
+  const ma = adj.map[a]!;
+  const mc = adj.map[c]!;
   if (ma.has(c) || ma.size < 2 || mc.size < 2) return null;
   const shared: number[] = [];
   const small = ma.size <= mc.size ? ma : mc;
@@ -78,7 +79,7 @@ export function scorePair(
   let bmax = 0;
   let dot = 0;
   for (const b of shared) {
-    const d = adj.map[b].size || 1;
+    const d = adj.map[b]!.size || 1;
     aa += 1 / Math.log(d + 1.5);
     ra += 1 / d;
     const wa = ma.get(b)!;
@@ -98,8 +99,8 @@ export function scorePair(
   const da = ma.size;
   const dc = mc.size;
   const union = new Set([...ma.keys(), ...mc.keys()]).size || 1;
-  const na = graph.nodes[a];
-  const nc = graph.nodes[c];
+  const na = graph.nodes[a]!;
+  const nc = graph.nodes[c]!;
   const drugDisease =
     (na.cat === "D" || nc.cat === "D") &&
     (na.cat === "C" || nc.cat === "C" || na.cat === "F" || nc.cat === "F")
@@ -125,7 +126,7 @@ export function scorePair(
 
   const { mean, std, coef, intercept } = graph.model;
   let z = intercept;
-  for (let i = 0; i < f.length; i++) z += ((f[i] - mean[i]) / (std[i] || 1)) * coef[i];
+  for (let i = 0; i < f.length; i++) z += ((f[i]! - mean[i]!) / (std[i]! || 1)) * coef[i]!;
   const prob = 1 / (1 + Math.exp(-z));
 
   shared.sort((x, y) => Math.min(ma.get(y)!, mc.get(y)!) - Math.min(ma.get(x)!, mc.get(x)!));
@@ -166,21 +167,21 @@ export function discover(
       : (() => {
           const rnd = mulberry32(opts.randomSeed ?? 42);
           const order = Array.from({ length: n }, (_, i) => i)
-            .filter((i) => adj.map[i].size >= 4)
-            .sort((x, y) => adj.map[y].size - adj.map[x].size)
+            .filter((i) => adj.map[i]!.size >= 4)
+            .sort((x, y) => adj.map[y]!.size - adj.map[x]!.size)
             .slice(0, Math.min(n, 4000));
           for (let i = order.length - 1; i > 0; i--) {
             const j = Math.floor(rnd() * (i + 1));
-            [order[i], order[j]] = [order[j], order[i]];
+            [order[i], order[j]] = [order[j]!, order[i]!];
           }
           return order.slice(0, opts.sampleNodes ?? 600);
         })();
 
   for (const a of anchors) {
     const counts = new Map<number, number>();
-    for (const b of adj.map[a].keys()) {
-      for (const c of adj.map[b].keys()) {
-        if (c === a || adj.map[a].has(c)) continue;
+    for (const b of adj.map[a]!.keys()) {
+      for (const c of adj.map[b]!.keys()) {
+        if (c === a || adj.map[a]!.has(c)) continue;
         counts.set(c, (counts.get(c) ?? 0) + 1);
       }
     }
