@@ -85,6 +85,8 @@ def sync(root, db_path, trees, template, max_files=None, listing=None, archive=N
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     with writer_lock(root, db_path), closing(connect(db_path)) as db:
         db.executescript(SCHEMA)
+        if db.execute("SELECT 1 FROM metadata WHERE key='supplemental_corpus'").fetchone():
+            raise ValueError("This corpus includes additive supplements. Use pubmed_expand.py to expand it without overwriting existing articles; ordered baseline sync requires a separate database.")
         files = listing if listing is not None else discover("baseline") + discover("update")
         files.sort(key=lambda f: (f["cycle"], f["kind"] != "baseline", f["sequence"]))
         cycles = {f["cycle"] for f in files if f["kind"] == "baseline"}

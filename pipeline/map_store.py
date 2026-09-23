@@ -119,11 +119,13 @@ def apply_event(db, record, trees, positions, node_delta, pair_delta):
     adjust(db, pmid, 1, node_delta, pair_delta)
 
 
-def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
+def import_file(db_path, path, trees, template, batch=500, ingestion_key=None, insert_only=False):
     if not str(db_path).startswith(("postgresql://", "postgres://")):
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     checksum = digest(path)
     source = "pubmed:" + ingestion_key if ingestion_key else str(path.resolve())
+    if insert_only:
+        source = "additive:" + source
     positions = {n["id"]: n for n in template["nodes"]}
     with closing(connect(db_path)) as db:
         db.executescript(SCHEMA)
@@ -132,7 +134,7 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
             raise ValueError("Imported input changed: use a new immutable update file")
         if previous and previous["complete"]:
             return {"status": "skipped", "source": source, "records": previous["line"]}
-        official = re.search(r"pubmed(\d+)n(\d+)", path.name)
+        official = None if insert_only else re.search(r"pubmed(\d+)n(\d+)", path.name)
         sequence = [int(value) for value in official.groups()] if official else None
         last = db.execute("SELECT value FROM metadata WHERE key='last_pubmed_sequence'").fetchone()
         if sequence and last and sequence < json.loads(last[0]):
@@ -151,6 +153,11 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
                 with db:
                     for record in chunk:
                         exists = db.execute("SELECT pmid FROM articles WHERE pmid=?", (str(record["pmid"]),)).fetchone() is not None
+                        if insert_only:
+                            if record.get("op") == "delete":
+                                raise ValueError("Additive imports cannot delete articles")
+                            if exists:
+                                continue
                         if record.get("op") == "delete": deletes += int(exists)
                         elif exists: updates += 1
                         else: inserts += 1

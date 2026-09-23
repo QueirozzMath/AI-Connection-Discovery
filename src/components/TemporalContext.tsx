@@ -134,8 +134,9 @@ export function PeriodSelector() {
         Somente {period.endYear}
       </button>
       <span className="text-muted-foreground">
-        Dados: {catalog.start}–{catalog.end} · corte de validação: {period.endYear}; treino:{" "}
-        {catalog.start}–{period.endYear};{" "}
+        Corpus: {catalog.articles.toLocaleString("pt-BR")} artigos · Dados: {catalog.start}–
+        {catalog.end} · corte de validação: {period.endYear}; treino: {catalog.start}–
+        {period.endYear};{" "}
         {period.endYear < catalog.end
           ? `teste: ${period.endYear + 1}–${catalog.end}`
           : "sem dados posteriores para teste"}

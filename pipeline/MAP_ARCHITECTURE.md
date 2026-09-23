@@ -6,13 +6,42 @@
 python -m venv .venv
 # Windows: .venv/Scripts/python.exe; Linux: .venv/bin/python
 .venv/Scripts/python.exe -m pip install -r pipeline/requirements.txt
-.venv/Scripts/python.exe pipeline/map_store.py --input pipeline/cache/pubmed_corpus.jsonl.gz
 .venv/Scripts/python.exe pipeline/map_api.py
 npm ci
 npm run dev
 ```
 
-O corpus inicial é uma amostra real de 67.560 artigos, de 1985 a 2025. O banco local é `pipeline/data/indexes/map.sqlite`, ignorado pelo Git. Não é o PubMed completo. A aplicação consulta a API local em `127.0.0.1:8090`; `MAP_API_URL` permite mudar esse endereço no servidor. `MAP_API_TOKEN` protege a API privada. Banco, tokens e conexões não vão ao navegador.
+O banco local ativo é `pipeline/data/indexes/pubmed.sqlite`. Ele reúne a baseline parcial já incorporada, os artigos do banco anterior e suplementos oficiais obtidos por ano e área MeSH. A contagem e os anos disponíveis vêm de `/metadata` e aparecem na barra temporal. O arquivo anterior `pipeline/data/indexes/map.sqlite` permanece preservado. Os bancos são ignorados pelo Git e não são incluídos no deploy.
+
+Em uma instalação sem banco, a primeira carga pode ser criada explicitamente com `pubmed_sync.py --db pipeline/data/indexes/pubmed.sqlite --max-files 1`. Esse comando é apenas para uma base nova ou ainda exclusivamente ordenada; não é necessário para iniciar a aplicação com o corpus ampliado existente.
+
+A ampliação é aditiva: PMIDs existentes não são atualizados nem excluídos, e os agregados recebem somente artigos novos. O corpus continua sendo parcial; cobertura de um ano não significa cobertura completa da produção daquele ano. O piso anual melhora a distribuição temporal, mas não elimina os vieses de seleção e indexação MeSH.
+
+Para ampliar ou retomar a execução local:
+
+```sh
+.venv/Scripts/python.exe pipeline/pubmed_expand.py --target-per-year 5000
+```
+
+A execução faz backup consistente do SQLite, incorpora o banco anterior e busca registros até atingir o piso em cada ano de 1974–2026. As buscas alternam 12 áreas MeSH; registros são aceitos somente se o ano de publicação extraído do XML corresponder ao ano solicitado e houver descritores MeSH. PMIDs são deduplicados globalmente. As requisições seguem os [limites oficiais das E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25497/); `NCBI_EMAIL` e `NCBI_API_KEY` são opcionais. Erros interrompem a execução com checkpoints, sem substituição por dados antigos ou vazios.
+
+Backup, respostas oficiais comprimidas, entradas imutáveis, SHA-256 e manifesto ficam em `pipeline/data/expansions/diversified-1974-2026/`. Reexecutar o mesmo comando retoma os lotes sem duplicar artigos. Para outra meta ou uma nova coleta, use um novo diretório `--root`. O controle dos sete arquivos de baseline permanece intacto. `pubmed_sync.py` recusa executar sobre o corpus suplementado, evitando que arquivos antigos sobrescrevam registros preservados; uma sincronização integral ordenada exige outro banco explicitamente escolhido. Daily updates só se aplicam após a baseline completa.
+
+A aplicação consulta a API local em `127.0.0.1:8090`; `MAP_API_URL` permite mudar esse endereço no servidor. `MAP_API_TOKEN` protege a API privada. Banco, tokens e conexões não vão ao navegador. Ampliar este SQLite local não popula automaticamente o PostgreSQL/Hyperdrive do ambiente publicado.
+
+### Carga local de 22/09/2026
+
+- Resultado da ampliação aditiva: **449.996 artigos únicos**, cobrindo todos os **53 anos de 1974 a 2026**, com pelo menos **5.000 artigos por ano**.
+- Composição: 210.000 artigos da base ativa preservados, 67.560 reincorporados da base anterior e 172.436 novos artigos obtidos nas E-utilities oficiais.
+- Os cinco anos de 1975–1979 mantêm seus 209.996 artigos. Os outros 48 anos passam a reunir 240.000, melhorando a distribuição sem remover registros antigos.
+- Antes da ampliação aditiva: 210.000 artigos únicos, com anos de publicação de 1974 a 1980.
+- Sete arquivos oficiais, `pubmed26n0001.xml.gz` até `pubmed26n0007.xml.gz`, incorporados em ordem com MD5 conferido.
+- Banco anterior: 67.560 artigos, 1985–2025, incorporados por adição; o arquivo original permanece preservado.
+- O relatório da primeira carga permanece em `pipeline/data/manifests/corpus-expansion-2026-09-22.json`. O manifesto da ampliação aditiva registra separadamente a distribuição anterior e posterior, as fontes e a integridade do banco.
+- A auditoria detalhada fica em `pipeline/data/expansions/diversified-1974-2026/validation.json`; as consultas da API são verificadas em `api-validation.json`, no mesmo diretório. São artefatos locais, junto ao backup e aos dados, e não fazem parte do deploy.
+- Validação concluída: nenhum artigo ou vínculo MeSH original perdido/alterado, arquivo anterior intacto, agregados anuais de conceitos recalculados e conferidos, pesos de pares amostrados nos 53 anos, integridade SQLite `ok` e nenhuma violação de chave estrangeira. A consulta de 1974–2026 sem cache de resultado levou 15,3 segundos nesta máquina; a consulta anual de 2026 e a listagem de artigos também passaram. Oito testes automatizados cobrem preservação, deduplicação, retomada e rejeição de erros.
+
+Após trocar de banco, recarregue a página e ajuste eventuais parâmetros `from`/`to` antigos à cobertura disponível. Os artigos do mapa referem-se ao intervalo selecionado; a barra temporal mostra também o total do corpus.
 
 ## Inspeção e mudanças
 

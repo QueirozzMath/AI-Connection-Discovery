@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import OrderedDict
 from map_store import connect
 
-DB = Path("pipeline/data/indexes/map.sqlite")
+DB = Path("pipeline/data/indexes/pubmed.sqlite")
 QUERY_LOCK = threading.BoundedSemaphore(2)
 JOBS = OrderedDict()
 JOBS_LOCK = threading.Lock()
@@ -278,7 +278,7 @@ def main():
     args = parser.parse_args()
     DB = args.db if args.db.startswith(("postgres://", "postgresql://")) else Path(args.db).resolve()
     if isinstance(DB, Path) and not DB.is_file() and os.getenv("ENABLE_INGESTION") != "1":
-        parser.error("Database missing: run map_store.py first")
+        parser.error("Database missing: run pubmed_sync.py first or select an existing database with --db")
     if os.getenv("ENABLE_INGESTION") == "1":
         if isinstance(DB, Path): DB.parent.mkdir(parents=True, exist_ok=True)
         from ingestion_jobs import start_worker
