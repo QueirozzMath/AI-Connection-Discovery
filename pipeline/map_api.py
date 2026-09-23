@@ -71,17 +71,30 @@ def period(data, catalog):
 
 
 @lru_cache(maxsize=12)
-def graph_query(path, revision, start, end):
+def graph_query(path, revision, start, end, focus_ids=()):
     with closing(connect(path)) as db:
         template = json.loads(db.execute("SELECT value FROM metadata WHERE key='template'").fetchone()[0])
         rows = db.execute("""SELECT m.*,SUM(n.count) AS pubs FROM node_year n JOIN mesh m ON m.id=n.mesh_id
           WHERE n.year BETWEEN ? AND ? GROUP BY m.id ORDER BY pubs DESC,m.id LIMIT 4500""", (start, end)).fetchall()
+        if focus_ids:
+            from lbd_engine import neighbours
+            preferred=set(focus_ids)
+            for mid in focus_ids:
+                preferred.update(mid for mid,_ in sorted(((other,sum(years.values())) for other,years in neighbours(db,mid,start,end).items()),key=lambda item:(-item[1],item[0]))[:200])
+            placeholders=','.join('?' for _ in preferred)
+            extra=db.execute(f"""SELECT m.*,SUM(n.count) AS pubs FROM node_year n JOIN mesh m ON m.id=n.mesh_id
+              WHERE n.year BETWEEN ? AND ? AND m.id IN ({placeholders}) GROUP BY m.id ORDER BY pubs DESC,m.id""",(start,end,*sorted(preferred))).fetchall()
+            included={r['id'] for r in extra}
+            rows=(extra+[r for r in rows if r['id'] not in included])[:4500]
         db.execute("CREATE TEMP TABLE selected_mesh(id TEXT PRIMARY KEY) WITHOUT ROWID")
         db.executemany("INSERT INTO selected_mesh VALUES(?)", ((r["id"],) for r in rows))
+        db.execute("CREATE TEMP TABLE focused_mesh(id TEXT PRIMARY KEY)")
+        db.executemany("INSERT INTO focused_mesh VALUES(?)", ((mid,) for mid in focus_ids))
         edges = db.execute("""SELECT p.mesh_a,p.mesh_b,SUM(p.weight) AS weight FROM pair_year p
           JOIN selected_mesh a ON a.id=p.mesh_a JOIN selected_mesh b ON b.id=p.mesh_b
           WHERE p.year BETWEEN ? AND ? GROUP BY p.mesh_a,p.mesh_b
-          ORDER BY weight DESC,p.mesh_a,p.mesh_b LIMIT 30000""", (start, end)).fetchall()
+          ORDER BY CASE WHEN p.mesh_a IN (SELECT id FROM focused_mesh) OR p.mesh_b IN (SELECT id FROM focused_mesh) THEN 0 ELSE 1 END,
+          weight DESC,p.mesh_a,p.mesh_b LIMIT 30000""", (start, end)).fetchall()
         growth_rows = db.execute("""SELECT mesh_id,
           SUM(CASE WHEN year>=? THEN count ELSE 0 END) AS recent,
           SUM(CASE WHEN year<? THEN count ELSE 0 END) AS older
@@ -230,7 +243,17 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError,KeyError): return self.respond(400, {"error":"Invalid job"})
         if not self.authorized():
             return
-        if self.path not in ("/graph", "/articles", "/analysis", "/evidence"):
+        if self.path == '/lbd':
+            try:
+                length=int(self.headers.get('Content-Length','0'))
+                if not 0<length<=100000: return self.respond(413,{'error':'Payload too large'})
+                from lbd_jobs import dispatch
+                return self.respond(200,dispatch(DB,json.loads(self.rfile.read(length))))
+            except (ValueError,TypeError,KeyError) as error:
+                return self.respond(400,{'error':str(error)})
+            except Exception:
+                return self.respond(503,{'error':'Serviço LBD indisponível'})
+        if self.path not in ("/graph", "/articles", "/analysis", "/evidence", "/concepts"):
             return self.respond(404, {"error": "Not found"})
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -240,7 +263,10 @@ class Handler(BaseHTTPRequestHandler):
             with QUERY_LOCK, closing(connect(DB)) as db:
                 catalog = metadata(db)
                 start, end = period(data, catalog)
-                if self.path == "/analysis":
+                if self.path == "/concepts":
+                    from lbd_engine import concepts
+                    result=concepts(db,start,end,data.get('q',''),data.get('categories',[]),data.get('operator','or'),data.get('seedIds',[]))
+                elif self.path == "/analysis":
                     ids=data.get("meshIds")
                     seeds=data.get("seedIds",[])
                     for value in [ids,seeds]:
@@ -251,7 +277,9 @@ class Handler(BaseHTTPRequestHandler):
                 elif self.path == "/evidence":
                     result = evidence_query(db, data, start, end)
                 elif self.path == "/graph":
-                    result = graph_query(str(DB), catalog["revision"], start, end)
+                    focus=data.get('focusIds',[])
+                    if not isinstance(focus,list) or len(focus)>20 or any(not isinstance(i,str) or len(i)>24 for i in focus): raise ValueError('Invalid focus')
+                    result = graph_query(str(DB), catalog["revision"], start, end,tuple(sorted(set(focus))))
                 else:
                     ids = data.get("meshIds", [])
                     if not isinstance(ids, list) or len(ids) > 4500 or any(not isinstance(i, str) or len(i) > 24 for i in ids):
@@ -279,11 +307,14 @@ def main():
     DB = args.db if args.db.startswith(("postgres://", "postgresql://")) else Path(args.db).resolve()
     if isinstance(DB, Path) and not DB.is_file() and os.getenv("ENABLE_INGESTION") != "1":
         parser.error("Database missing: run pubmed_sync.py first or select an existing database with --db")
+    server = MapHTTPServer((args.host, args.port), Handler)
+    from lbd_jobs import setup, start_worker as start_lbd_worker
+    setup(DB)
+    start_lbd_worker(DB)
     if os.getenv("ENABLE_INGESTION") == "1":
         if isinstance(DB, Path): DB.parent.mkdir(parents=True, exist_ok=True)
         from ingestion_jobs import start_worker
         start_worker(DB, Path(os.getenv("PUBMED_ROOT", "pipeline/data")))
-    server = MapHTTPServer((args.host, args.port), Handler)
     print(f"Map API: http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
 

@@ -73,7 +73,7 @@ Endpoints privados:
 - `POST /evidence`: período, dois conceitos, universo permitido opcional. Resolve descritores no banco e devolve artigos reais e pontes; não aceita evidência inventada pelo cliente.
 - `POST /ingestion-jobs`: endpoint administrativo separado, autenticado e desabilitado por padrão.
 
-Não há endpoints separados para busca global/termos-chave: o filtro reutilizável atua no grafo limitado; a inferência recebe os IDs resultantes em uma consulta. A ausência de aresta no grafo exportado não comprova novidade: candidatos são conferidos contra `pair_year` completo até o corte.
+`POST /concepts` pesquisa todos os conceitos ativos do período, com categorias, AND/OR e sementes, independentemente do limite visual do Canvas. `POST /graph` aceita `focusIds` para incorporar conceitos encontrados fora do recorte visual. `POST /lbd` recebe operações científicas e retorna um ID de job persistido; status, lista de hipóteses e histórico são consultados separadamente. A ausência de aresta no grafo exportado não comprova novidade: candidatos são conferidos contra `pair_year` completo até o corte.
 
 ## Treino e validação sem dados futuros
 
@@ -83,9 +83,9 @@ Condições mínimas: dez anos de histórico antes da janela interna de calibra�
 
 O trabalho pesado roda em um executor Python com um worker e até quatro jobs pendentes. Cache de análises: 12 resultados; cache de modelos: seis cortes/revisões. Reiniciar o serviço pode exigir recalcular análises, mas não perde artigos ou checkpoints de ingestão. O orçamento atual é de 6.000 pares candidatos e 200 resultados, com grafo limitado; as métricas descrevem essa amostra de candidatos, não todos os pares possíveis do PubMed. Boosting e regressão logística são comparados com seis baselines. Não se inventam ajustes de lei de potência ou testes DeLong quando não calculados.
 
-## Agentes e Workers AI
+## Agentes locais e adaptador anterior
 
-Provider padrão: Cloudflare Workers AI, binding `AI`. Modelo padrão centralizado em `src/lib/agent-config.ts`: `@cf/meta/llama-3.1-8b-instruct`; `AI_MODEL` pode sobrescrevê-lo no servidor. `generateAgentResponse` encapsula o provider. O build produz configuração Wrangler com binding AI e `nodejs_compat`.
+O fluxo atual da aba Agentes usa `pipeline/agent_runtime.py`, com Ollama local e `qwen2.5:1.5b` por padrão. `AGENT_RUNTIME`, `AGENT_URL` e `AGENT_MODEL` são configurações do serviço Python. Os cinco papéis, a fila e os registros imutáveis estão descritos em [LBD_IMPLEMENTATION.md](LBD_IMPLEMENTATION.md). O adaptador anterior Workers AI e seu binding opcional permanecem compatíveis, mas a nova aba não depende deles.
 
 Não há gateway externo nem chave de provedor solicitada ao usuário final. Foram removidos o gateway anterior, telemetria/editor, pacote de configuração Vite e SDKs de IA que não são mais usados. O lockfile npm é a fonte de dependências; o lockfile Bun antigo foi retirado para não conservar dependências obsoletas.
 
@@ -93,7 +93,7 @@ Geração consulta primeiro a API/banco, com datas e IDs controlados pelo servid
 
 Limites: o corpus inicial contém principalmente títulos, não abstracts completos; a avaliação científica requer revisão humana. O conhecimento prévio de um LLM pré-treinado não pode ser apagado por um prompt: a separação garantida é a dos dados recuperados e dos modelos de ligação. Isso não constitui uma prova de ausência de conhecimento futuro no pré-treinamento do LLM.
 
-Workers AI oferece uma franquia gratuita sujeita aos limites da conta; não é inferência ilimitada gratuita. Ver [bindings](https://developers.cloudflare.com/workers-ai/configuration/bindings/) e [preços/franquia](https://developers.cloudflare.com/workers-ai/platform/pricing/). Sem binding, o app informa indisponibilidade; não muda para uma API paga. O dev Vite puro não emula AI; uma chamada real requer ambiente Cloudflare configurado. Os testes unitários usam um binding simulado, sem cobrança.
+Ollama roda fora do Worker e não exige chave de usuário. No deploy, configure o serviço Python e um runtime alcançável por ele. O localhost deste computador não é alcançável por um Worker publicado. O adaptador Workers AI anterior continua tendo testes próprios; esses testes não substituem a integração do runtime local.
 
 ## Ingestão automática
 

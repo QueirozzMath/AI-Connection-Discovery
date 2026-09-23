@@ -8,12 +8,26 @@ from functools import lru_cache
 import random
 import math
 import time
+import json
 
 from map_store import connect
 
 GAP = 6
 MAX_PAIRS = 6000
 MIN_POSITIVES = 20
+
+
+def historical_meta(path,nodes,cutoff):
+    """Never use today's taxonomy as historical scientific features."""
+    from lbd_engine import MESH_SCHEMA
+    trees,branch={},{}
+    with closing(connect(path)) as db:
+        db.executescript(MESH_SCHEMA)
+        for mid,payload in db.execute("SELECT id,payload FROM mesh_versions WHERE kind='Descriptor' AND valid_from<=? AND (valid_to IS NULL OR valid_to>=?) ORDER BY valid_from",(cutoff,cutoff)):
+            value=json.loads(payload)
+            trees[mid]=value.get('treeNumbers',[])
+            branch[mid]=value.get('category','')
+    return {'trees':trees,'branch':branch,'growth':{n['id']:n['growth'] for n in nodes}}
 
 
 def snapshot(path, at):
@@ -31,9 +45,7 @@ def snapshot(path, at):
         ai, bi = graph["nodes"][a]["id"], graph["nodes"][b]["id"]
         adj[ai][bi] = w
         adj[bi][ai] = w
-    meta = {"trees": {i: [n["tree"]] for i, n in nodes.items()},
-            "branch": {i: n["cat"] for i, n in nodes.items()},
-            "growth": {i: n["growth"] for i, n in nodes.items()}}
+    meta = historical_meta(path,graph['nodes'],at)
     return graph, adj, meta
 
 
@@ -103,7 +115,7 @@ def analyze(path, revision, start, end, validate=False, allowed_ids=None, seed_i
         for a,b,w in graph["edges"]:
             adj[nodes[a]["id"]][nodes[b]["id"]] = w
             adj[nodes[b]["id"]][nodes[a]["id"]] = w
-        meta = {"trees": {n["id"]:[n["tree"]] for n in nodes}, "branch": {n["id"]:n["cat"] for n in nodes}, "growth": {n["id"]:n["growth"] for n in nodes}}
+        meta = historical_meta(path,nodes,end)
     if not validate and allowed_ids is not None:
         allowed = set(allowed_ids)
         adj = {a:{b:w for b,w in neighbours.items() if b in allowed} for a,neighbours in adj.items() if a in allowed}

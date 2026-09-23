@@ -1,411 +1,664 @@
-import { mapPeriodGraph } from "@/lib/map-api.functions";
-import { selectKeywordNodes, selectMapNodes, mapSearchIndex } from "@/lib/map-selection";
-import { useTemporal } from "@/components/TemporalContext";
-import { useTemporalAnalysis } from "@/hooks/use-temporal-analysis";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
-import { Suspense, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { z } from "zod";
-import { fallback, zodValidator } from "@tanstack/zod-adapter";
+import { zodValidator } from "@tanstack/zod-adapter";
 import { BrainCircuit, FlaskConical, Loader2, SearchCheck, ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
-
-import { pct, type Candidate } from "@/lib/science-data";
-import {
-  generateHypothesis,
-  verifyHypothesis,
-  type HypothesisResult,
-  type VerificationResult,
-} from "@/lib/hypothesis.functions";
+import { useTemporal } from "@/components/TemporalContext";
+import { useLbdJob } from "@/hooks/use-lbd-job";
+import { lbdRequest } from "@/lib/hypothesis.functions";
+import type {
+  AgentClaim,
+  EvidenceArticle,
+  HypothesisRecord,
+  LbdCandidate,
+  LbdSummary,
+  ValidationRecord,
+} from "@/lib/lbd-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Progress } from "@/components/ui/progress";
-
-const searchSchema = z.object({
-  a: fallback(z.string(), "").default(""),
-  c: fallback(z.string(), "").default(""),
-  from: z.number().optional(),
-  to: z.number().optional(),
-  cutoff: fallback(z.number(), 0).default(0),
-});
 
 export const Route = createFileRoute("/hypotheses")({
-  validateSearch: zodValidator(searchSchema),
+  validateSearch: zodValidator(
+    z.object({
+      a: z.string().catch("").default(""),
+      c: z.string().catch("").default(""),
+      from: z.number().optional(),
+      to: z.number().optional(),
+      cutoff: z.number().optional(),
+    }),
+  ),
   head: () => ({
     meta: [
-      { title: "Agentes de hipótese — MeSHMap" },
+      { title: "Agentes e descoberta LBD temporal — MeSHMap" },
       {
         name: "description",
         content:
-          "Agentes de IA leem só a literatura anterior ao corte, formulam hipóteses mecanísticas e depois buscam artigos reais no PubMed para confirmar ou refutar cada uma.",
+          "Candidatos ABC auditáveis, evidências por ligação, hipóteses congeladas e validação temporal posterior.",
       },
-      { property: "og:title", content: "Agentes de hipótese — MeSHMap" },
-      {
-        property: "og:description",
-        content:
-          "Hipóteses geradas por IA para conexões inéditas entre MeSH terms, com revisão cética e verificação no PubMed.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   ssr: false,
-  component: () => (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando pares…</div>}>
-      <HypothesesPage />
-    </Suspense>
-  ),
+  component: HypothesesPage,
 });
 
-const VERDICTS: Record<string, { label: string; className: string }> = {
-  confirmada: { label: "hipótese confirmada", className: "bg-accent text-accent-foreground" },
-  parcial: { label: "parcialmente confirmada", className: "bg-chart-3 text-background" },
-  refutada: { label: "refutada", className: "bg-destructive text-destructive-foreground" },
-  sem_evidencia: { label: "sem evidência ainda", className: "" },
+const LABELS: Record<string, string> = {
+  NO_FUTURE_EVIDENCE: "Sem evidência futura no corpus",
+  WEAK_SIGNAL: "Sinal bibliográfico fraco",
+  PARTIAL_SUPPORT: "Suporte parcial — revisão humana",
+  SUBSTANTIAL_SUPPORT: "Suporte substancial — revisão humana",
+  CONTRADICTED: "Contradita — revisão humana",
+  INCONCLUSIVE: "Inconclusivo",
+};
+const METRICS: Record<string, string> = {
+  novelty: "Novidade no corpus",
+  bridgeStrength: "Força das pontes",
+  surprise: "Surpresa (PMI)",
+  temporalEmergence: "Emergência temporal",
+  semanticDistance: "Distância estrutural (proxy)",
+  meshTreeDistance: "Distância MeSH histórica",
+  evidenceStrength: "Artigos dos caminhos",
+  pathCount: "Pontes B distintas",
+  persistence: "Persistência",
+  contradictionSignal: "Sinal de contradição",
 };
 
 function HypothesesPage() {
   const { period, catalog } = useTemporal();
   const search = Route.useSearch();
-  const graphQuery = useQuery({
-    queryKey: ["period-graph", period, catalog?.revision],
-    queryFn: () => mapPeriodGraph({ data: period! }),
-    enabled: !!period && !!catalog,
-  });
-  const graph = graphQuery.data;
-  const allowed = useMemo(() => {
-    if (!graph) return null;
-    const filtered = selectMapNodes(
-      graph,
-      mapSearchIndex(graph),
-      search.q,
-      search.cats.split(",").filter(Boolean),
-      search.op,
-    );
-    const seeds = search.seedIds
-      .split(",")
-      .map((id) => graph.nodes.findIndex((n) => n.id === id))
-      .filter((i) => i >= 0);
-    return selectKeywordNodes(graph, filtered, seeds);
-  }, [graph, search.q, search.cats, search.op, search.seedIds]);
-  const allowedIds = useMemo(
-    () => (allowed && graph ? [...allowed].map((i) => graph.nodes[i]!.id) : undefined),
-    [allowed, graph],
-  );
-  const seedIds = useMemo(
-    () => (search.seedIds ? search.seedIds.split(",") : undefined),
-    [search.seedIds],
-  );
-  const query = useTemporalAnalysis("explore", !!graph, allowedIds, seedIds);
-  const items = useMemo(
-    () =>
-      (query.data?.items ?? []).filter((item) => {
-        if (!graph) return false;
-        const indices = [item.a_ui, item.c_ui].map((id) =>
-          graph.nodes.findIndex((n) => n.id === id),
-        );
-        const bridges = item.intermediaries.map((label) =>
-          graph.nodes.findIndex((n) => n.label === label),
-        );
-        return [...indices, ...bridges].every((i) => i >= 0 && (!allowed || allowed.has(i)));
-      }),
-    [graph, query.data, allowed],
-  );
   if (!period || !catalog) return <div className="p-8">Aguardando o serviço científico.</div>;
-  if (query.isError || graphQuery.isError)
-    return (
-      <div role="alert" className="p-8">
-        Falha ao consultar os candidatos.
-      </div>
-    );
-  if (!query.data || query.data.status === "pending" || query.data.status === "busy")
-    return <div className="p-8">Calibrando candidatos com os dados permitidos…</div>;
-  if (!graph || graphQuery.isPending)
-    return <div className="p-8">Carregando universo do período…</div>;
-  if (!items.length)
-    return <div className="p-8">{query.data.reason ?? "Nenhum par elegível neste período."}</div>;
   return (
-    <HypothesesContent
-      key={`${period.startYear}:${period.endYear}:${catalog.revision}:${search.cats}:${search.op}:${search.q}:${search.seedIds}`}
-      data={{ items }}
-      search={search}
-      cutoff={period.endYear}
+    <DiscoveryWorkspace
+      key={`${period.startYear}:${period.endYear}:${search.q}:${search.cats}:${search.op}:${search.seedIds}`}
       startYear={period.startYear}
-      meshIds={(allowed ? [...allowed] : graph.nodes.map((_, i) => i)).map(
-        (i) => graph.nodes[i]!.id,
-      )}
+      cutoff={period.endYear}
+      maxYear={catalog.end}
     />
   );
 }
-function HypothesesContent({
-  data,
-  search,
-  cutoff,
+
+function DiscoveryWorkspace({
   startYear,
-  meshIds,
+  cutoff,
+  maxYear,
 }: {
-  data: { items: Candidate[] };
-  search: { a: string; c: string };
-  cutoff: number;
   startYear: number;
-  meshIds: string[];
+  cutoff: number;
+  maxYear: number;
 }) {
-  const runGenerate = useServerFn(generateHypothesis);
-  const runVerify = useServerFn(verifyHypothesis);
-
-  const initial = useMemo(() => {
-    if (search.a && search.c) {
-      return data.items.find((i) => i.a === search.a && i.c === search.c) ?? data.items[0]!;
-    }
-    return data.items[0]!;
-  }, [data.items, search.a, search.c]);
-
-  const [pair, setPair] = useState<Candidate>(initial);
-  const [loading, setLoading] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [results, setResults] = useState<Record<string, HypothesisResult>>({});
-  const [checks, setChecks] = useState<Record<string, VerificationResult>>({});
-
-  const key = `${cutoff}::${pair.a}::${pair.c}`;
-  const result = results[key];
-  const check = checks[key];
-
-  const generate = async () => {
-    setLoading(true);
-    try {
-      const res = await runGenerate({
-        data: {
-          a: pair.a,
-          c: pair.c,
-          startYear,
-          endYear: cutoff,
-          meshIds,
-        },
-      });
-      setResults((r) => ({ ...r, [key]: res }));
-      setChecks((c) => {
-        const next = { ...c };
-        delete next[key];
-        return next;
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao gerar hipótese");
-    } finally {
-      setLoading(false);
-    }
+  const search = Route.useSearch();
+  const [a, setA] = useState(search.a || search.seedIds.split(",")[0] || "");
+  const [c, setC] = useState(search.c);
+  const [selected, setSelected] = useState<{
+    a: string;
+    c: string;
+    mode?: "open" | "closed" | "global";
+    saved?: HypothesisRecord;
+  }>();
+  const discover = useLbdJob<{
+    items: (LbdSummary | LbdCandidate)[];
+    reason?: string;
+    ranking?: string;
+    budget?: Record<string, number>;
+  }>();
+  const backtest = useLbdJob<{
+    nHypotheses: number;
+    withFutureEvidence: number;
+    alreadyKnownAtCutoff: number;
+    statusCounts: Record<string, number>;
+    humanReviewCounts: Record<string, number>;
+    leadTimeYears: number[];
+  }>();
+  const ledger = useQuery({
+    queryKey: ["hypothesis-ledger", cutoff],
+    queryFn: () => lbdRequest({ data: { operation: "list", cutoffYear: cutoff } }),
+    refetchInterval: 15000,
+  });
+  const records = (ledger.data?.items ?? []) as HypothesisRecord[];
+  const run = (mode: "global" | "open" | "closed") => {
+    setSelected(undefined);
+    discover.run({
+      operation: "discover",
+      mode,
+      a,
+      c,
+      startYear,
+      endYear: cutoff,
+      q: search.q,
+      categories: search.cats.split(",").filter(Boolean),
+      operator: search.op,
+      seedIds: search.seedIds.split(",").filter(Boolean).slice(0, 20),
+    });
   };
-
-  const verify = async () => {
-    if (!result) return;
-    setVerifying(true);
-    try {
-      const res = await runVerify({
-        data: {
-          a: pair.a,
-          c: pair.c,
-          startYear,
-          endYear: cutoff,
-          meshIds,
-          hypothesis: result.hypothesis,
-          mechanism: result.mechanism,
-          prediction: result.testable_prediction,
-        },
-      });
-      setChecks((c) => ({ ...c, [key]: res }));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao verificar no PubMed");
-    } finally {
-      setVerifying(false);
-    }
-  };
-
   return (
     <div className="flex h-full min-h-0 flex-col lg:flex-row">
-      <aside className="w-full shrink-0 border-b border-border bg-sidebar p-4 lg:h-full lg:w-80 lg:border-b-0 lg:border-r">
+      <aside className="w-full shrink-0 space-y-3 border-b border-border bg-sidebar p-4 lg:w-80 lg:overflow-auto lg:border-r">
         <h1 className="font-display text-lg font-semibold">Agentes de hipótese</h1>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Contexto de {startYear} a {cutoff}: artigos reais do corpus selecionado. A verificação usa
-          somente artigos posteriores a {cutoff}.
+        <p className="text-xs text-muted-foreground">
+          Seleção de conceitos: {startYear}–{cutoff}. Conhecimento e novidade: todo o corpus até{" "}
+          {cutoff}. Validação: somente {cutoff + 1}+.
         </p>
-        <ScrollArea className="mt-3 h-[calc(100%-5rem)] rounded-lg border border-border">
+        <label className="block text-xs">
+          Conceito A (MeSH ID ou nome)
+          <Input aria-label="Conceito A" value={a} onChange={(e) => setA(e.target.value)} />
+        </label>
+        <label className="block text-xs">
+          Conceito C (opcional)
+          <Input aria-label="Conceito C" value={c} onChange={(e) => setC(e.target.value)} />
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" disabled={discover.pending} onClick={() => run("global")}>
+            Busca global ABC
+          </Button>
+          <Button size="sm" disabled={!a || discover.pending} onClick={() => run("open")}>
+            A → possíveis C
+          </Button>
+          <Button size="sm" disabled={!a || !c || discover.pending} onClick={() => run("closed")}>
+            A → B → C
+          </Button>
+        </div>
+        {discover.pending && (
+          <p role="status" className="text-xs">
+            Gerando candidatos quantitativos…
+          </p>
+        )}
+        <ErrorMessage error={discover.error} />
+        {discover.result?.reason && <p className="text-xs">{discover.result.reason}</p>}
+        <ScrollArea className="h-64 rounded-lg border border-border">
           <ul className="divide-y divide-border">
-            {data.items.slice(0, 120).map((c) => (
-              <li key={`${c.a}-${c.c}`}>
+            {discover.result?.items.map((item, i) => (
+              <li key={`${item.A.id}:${item.C.id}`}>
                 <button
-                  onClick={() => setPair(c)}
-                  className="w-full px-3 py-2.5 text-left text-xs transition-colors hover:bg-secondary"
+                  className="w-full px-3 py-2.5 text-left text-xs hover:bg-secondary"
+                  onClick={() =>
+                    setSelected({
+                      a: item.A.id,
+                      c: item.C.id,
+                      mode: item.candidateType as "open" | "closed" | "global",
+                    })
+                  }
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] text-muted-foreground">#{c.rank}</span>
-                    <span className="font-mono text-[11px] text-primary">{pct(c.prob, 0)}</span>
-                  </div>
-                  <p className="mt-1 leading-snug">
-                    {c.a} <span className="text-muted-foreground">⇢</span> {c.c}
+                  <span className="font-mono text-muted-foreground">#{i + 1}</span>
+                  <p>
+                    {item.A.label} ⇢ {item.C.label}
                   </p>
+                  {"generationPathCount" in item && (
+                    <p>
+                      {item.generationPathCount} pontes na geração · força{" "}
+                      {item.generationBridgeStrength}
+                    </p>
+                  )}
                 </button>
               </li>
             ))}
           </ul>
         </ScrollArea>
-      </aside>
-
-      <div className="min-h-0 flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-3xl space-y-5">
-          <section className="panel p-5">
-            <div className="flex flex-wrap items-center gap-2">
-              {pair.rank > 0 && <Badge variant="secondary">#{pair.rank}</Badge>}
-              {pair.confirmed ? (
-                <Badge className="bg-accent text-accent-foreground">
-                  conexão surgiu em {pair.first_year} (+{pair.lead_time_years} anos)
-                </Badge>
-              ) : (
-                <Badge variant="outline">não observada até o corte</Badge>
-              )}
-              <Badge variant="outline">p = {pct(pair.prob)}</Badge>
-              <Badge variant="outline">corte {cutoff}</Badge>
-            </div>
-            <h2 className="mt-3 font-display text-xl font-semibold">
-              {pair.a} <span className="text-muted-foreground">⇢</span> {pair.c}
-            </h2>
-            {pair.intermediaries.length > 0 && (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Conceitos-ponte: {pair.intermediaries.join(", ")}
+        {discover.result?.ranking && (
+          <p className="text-[11px] text-muted-foreground">
+            {discover.result.ranking}. Orçamento: {JSON.stringify(discover.result.budget)}.
+          </p>
+        )}
+        <h2 className="text-sm font-semibold">Hipóteses registradas neste corte</h2>
+        <ErrorMessage error={ledger.error?.message} />
+        {records.length === 0 && (
+          <p className="text-xs text-muted-foreground">Nenhuma hipótese registrada neste corte.</p>
+        )}
+        {records.map((record) => (
+          <button
+            key={record.id}
+            className="block w-full rounded border border-border p-2 text-left text-xs"
+            onClick={() =>
+              setSelected({ a: record.candidate.A.id, c: record.candidate.C.id, saved: record })
+            }
+          >
+            {record.agents.synthesis.title}
+            <span className="block font-mono text-[10px]">{record.createdAt}</span>
+          </button>
+        ))}
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!records.length || backtest.pending}
+          onClick={() => backtest.run({ operation: "backtest", cutoffYear: cutoff })}
+        >
+          Backtest das hipóteses registradas
+        </Button>
+        {backtest.pending && <p className="text-xs">Validando registros congelados…</p>}
+        <ErrorMessage error={backtest.error} />
+        {backtest.result && (
+          <div className="text-xs">
+            <p>
+              {backtest.result.nHypotheses} hipóteses · {backtest.result.withFutureEvidence} com
+              coindexação futura · {backtest.result.alreadyKnownAtCutoff} já conhecidas no corte.
+            </p>
+            <p>
+              Tempos até o primeiro sinal: {backtest.result.leadTimeYears.join(", ") || "nenhum"}{" "}
+              anos.
+            </p>
+            {Object.entries(backtest.result.statusCounts).map(([status, count]) => (
+              <p key={status}>
+                {LABELS[status]}: {count}
               </p>
-            )}
-            <Progress value={pair.prob * 100} className="mt-4" />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button onClick={generate} disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" /> Agentes trabalhando…
-                  </>
-                ) : (
-                  <>
-                    <BrainCircuit className="size-4" /> {result ? "Regerar" : "Gerar"} hipótese
-                  </>
-                )}
-              </Button>
-              {result && (
-                <Button variant="secondary" onClick={verify} disabled={verifying}>
-                  {verifying ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" /> Buscando no PubMed…
-                    </>
-                  ) : (
-                    <>
-                      <SearchCheck className="size-4" /> Verificar no PubMed pós-{cutoff}
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-          </section>
-
-          {result && (
-            <>
-              <section className="panel p-5">
-                <h3 className="font-display text-lg font-semibold">{result.title}</h3>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Badge variant="outline">confiança {pct(result.confidence, 0)}</Badge>
-                  <Badge variant="outline">novidade {result.novelty}</Badge>
-                  <Badge variant="secondary">{result.model}</Badge>
-                  <Badge variant="outline">
-                    {result.evidence_seen.a.length + result.evidence_seen.c.length} artigos lidos
-                  </Badge>
-                </div>
-                <Block title="Hipótese" body={result.hypothesis} />
-                <Block title="Mecanismo proposto" body={result.mechanism} />
-                <Block title="Raciocínio pela ponte B" body={result.bridge_reasoning} />
-                <div className="mt-4 text-xs text-muted-foreground">
-                  <p>Artigos fornecidos ao agente:</p>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {[...new Set([...result.evidence_seen.a, ...result.evidence_seen.c])].map(
-                      (pmid) => (
-                        <a
-                          key={pmid}
-                          href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}/`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-primary underline"
-                        >
-                          PMID {pmid}
-                        </a>
-                      ),
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <section className="panel p-5">
-                <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                  <FlaskConical className="size-4 text-primary" /> Previsão testável
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed">{result.testable_prediction}</p>
-              </section>
-
-              <section className="panel p-5">
-                <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                  <ShieldAlert className="size-4 text-destructive" /> Agente cético
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed">{result.skeptic_critique}</p>
-              </section>
-            </>
-          )}
-
-          {check && (
-            <section className="panel p-5">
-              <h3 className="flex items-center gap-2 font-display text-base font-semibold">
-                <SearchCheck className="size-4 text-primary" /> Veredito na literatura real
-              </h3>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Badge className={VERDICTS[check.verdict]?.className}>
-                  {VERDICTS[check.verdict]?.label ?? check.verdict}
-                </Badge>
-                <Badge variant="outline">
-                  {check.n_articles} artigos pós-{cutoff}
-                </Badge>
-                {check.first_year && (
-                  <Badge variant="outline">primeiro em {check.first_year}</Badge>
-                )}
-              </div>
-              <p className="mt-3 text-sm leading-relaxed">{check.rationale}</p>
-              {check.articles.length > 0 && (
-                <ul className="mt-4 space-y-1.5">
-                  {check.articles.map((art) => (
-                    <li key={art.pmid} className="text-xs leading-snug">
-                      <a
-                        href={`https://pubmed.ncbi.nlm.nih.gov/${art.pmid}/`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={
-                          check.supporting_pmids.includes(art.pmid)
-                            ? "text-accent underline-offset-2 hover:underline"
-                            : check.contradicting_pmids.includes(art.pmid)
-                              ? "text-destructive underline-offset-2 hover:underline"
-                              : "text-muted-foreground underline-offset-2 hover:underline"
-                        }
-                      >
-                        [{art.year ?? "s/d"}] {art.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          )}
-        </div>
-      </div>
+            ))}
+            <p>Revisões humanas (última revisão de cada hipótese):</p>
+            {Object.entries(backtest.result.humanReviewCounts)
+              .filter(([, count]) => count > 0)
+              .map(([status, count]) => (
+                <p key={status}>
+                  {LABELS[status]}: {count}
+                </p>
+              ))}
+            <p>Isso não é taxa de descobertas confirmadas.</p>
+          </div>
+        )}
+      </aside>
+      <main className="min-h-0 flex-1 overflow-auto p-6">
+        {selected ? (
+          <CandidateWorkspace
+            key={`${selected.a}:${selected.c}:${selected.saved?.id ?? "new"}`}
+            {...selected}
+            startYear={startYear}
+            cutoff={cutoff}
+            maxYear={maxYear}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Gere candidatos ABC ou selecione uma hipótese registrada. O LLM só será chamado ao
+            solicitar a análise de um candidato.
+          </p>
+        )}
+      </main>
     </div>
   );
 }
 
+function CandidateWorkspace({
+  a,
+  c,
+  saved,
+  mode = "closed",
+  startYear,
+  cutoff,
+  maxYear,
+}: {
+  a: string;
+  c: string;
+  saved?: HypothesisRecord;
+  mode?: "open" | "closed" | "global";
+  startYear: number;
+  cutoff: number;
+  maxYear: number;
+}) {
+  const client = useQueryClient();
+  const detailJob = useLbdJob<LbdCandidate>();
+  const generation = useLbdJob<HypothesisRecord>();
+  const runDetail = detailJob.run;
+  useEffect(() => {
+    if (!saved) runDetail({ operation: "candidate", a, c, mode, startYear, endYear: cutoff });
+  }, [a, c, mode, startYear, cutoff, saved, runDetail]);
+  const record = generation.result ?? saved;
+  const detail = record?.candidate ?? detailJob.result;
+  useEffect(() => {
+    if (generation.result) void client.invalidateQueries({ queryKey: ["hypothesis-ledger"] });
+  }, [generation.result, client]);
+  if (!detail)
+    return (
+      <div>
+        <p>
+          {detailJob.pending ? "Recuperando caminhos e evidências…" : "Selecione um candidato."}
+        </p>
+        <ErrorMessage error={detailJob.error} />
+      </div>
+    );
+  return (
+    <div className="mx-auto max-w-4xl space-y-5">
+      <section className="panel p-5">
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">Candidato LBD · corte {detail.knowledgeCutoff}</Badge>
+          <Badge variant="outline">
+            A–C antes do corte: {detail.knownBeforeCutoff ? "SIM" : "NÃO observado no corpus"}
+          </Badge>
+        </div>
+        <h2 className="mt-3 font-display text-xl font-semibold">
+          {detail.A.label} ⇢ {detail.C.label}
+        </h2>
+        <p className="mt-2 text-sm">Conceitos-ponte: {detail.B.map((b) => b.label).join(", ")}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Categorias históricas A / C: {detail.A.category ?? "indisponível"} /{" "}
+          {detail.C.category ?? "indisponível"}. Coindexação não comprova mecanismo.
+        </p>
+        <Button
+          className="mt-4"
+          disabled={!detail.eligible || generation.pending}
+          onClick={() =>
+            generation.run({ operation: "generate", a, c, mode, startYear, endYear: cutoff })
+          }
+        >
+          {generation.pending ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Agentes trabalhando…
+            </>
+          ) : (
+            <>
+              <BrainCircuit className="size-4" />
+              {record
+                ? "Gerar nova hipótese (preservar registro)"
+                : "Analisar e registrar hipótese"}
+            </>
+          )}
+        </Button>
+        <ErrorMessage error={generation.error} />
+      </section>
+      <section className="panel p-5">
+        <h3 className="font-semibold">Discovery scorecard</h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {Object.entries(detail.metrics).map(([key, value]) => (
+            <div key={key} className="rounded border border-border p-3">
+              <p className="text-xs">{METRICS[key] ?? key}</p>
+              <strong>
+                {value === null
+                  ? "Não determinado"
+                  : typeof value === "number"
+                    ? Number.isInteger(value)
+                      ? value.toLocaleString("pt-BR")
+                      : value.toFixed(3)
+                    : `${value.value} (MeSH ${value.meshVersion})`}
+              </strong>
+              <p className="mt-1 text-[11px] text-muted-foreground">{detail.definitions[key]}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="panel p-5">
+        <h3 className="font-semibold">Evidências observadas dos caminhos A–B–C</h3>
+        <p className="text-xs text-muted-foreground">
+          Mostrando {detail.paths.length} caminhos; as contagens são do banco, e as listas de
+          artigos são limitadas.
+        </p>
+        {detail.paths.map((path) => (
+          <details key={path.B.id} className="mt-3 rounded border border-border p-3">
+            <summary className="cursor-pointer text-sm">
+              {detail.A.label} → {path.B.label} → {detail.C.label} · categoria de B:{" "}
+              {path.B.category ?? "histórico indisponível"}
+            </summary>
+            {(["AB", "BC"] as const).map((side) => (
+              <div key={side} className="mt-3">
+                <h4 className="text-sm font-semibold">
+                  {side === "AB" ? "A–B" : "B–C"}: {path[side].count} artigos · primeira ocorrência{" "}
+                  {path[side].firstYear}
+                </h4>
+                <p className="text-xs">
+                  Esperado sob independência: {path[side].expected.toFixed(3)} · PMI{" "}
+                  {path[side].pmi.toFixed(3)}
+                </p>
+                <Articles articles={path[side].articles} />
+              </div>
+            ))}
+          </details>
+        ))}
+      </section>
+      <ul className="list-disc pl-5 text-xs text-muted-foreground">
+        {detail.limitations.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {record && <HypothesisView record={record} maxYear={maxYear} />}
+    </div>
+  );
+}
+
+function HypothesisView({ record, maxYear }: { record: HypothesisRecord; maxYear: number }) {
+  const validation = useLbdJob<ValidationRecord>();
+  const history = useQuery({
+    queryKey: ["hypothesis-history", record.id, validation.result?.id],
+    queryFn: () => lbdRequest({ data: { operation: "get", id: record.id } }),
+  });
+  const checks = (history.data?.validations ?? []) as ValidationRecord[];
+  const [reviewer, setReviewer] = useState("");
+  const [rationale, setRationale] = useState("");
+  const [pmids, setPmids] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<
+    "PARTIAL_SUPPORT" | "SUBSTANTIAL_SUPPORT" | "CONTRADICTED" | "INCONCLUSIVE"
+  >("INCONCLUSIVE");
+  const synthesis = record.agents.synthesis;
+  return (
+    <>
+      <section className="panel p-5">
+        <h3 className="font-display text-lg font-semibold">{synthesis.title}</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge variant="outline">Registro congelado</Badge>
+          <Badge variant="outline">Revisão científica pendente</Badge>
+          <Badge variant="secondary">{record.agentModel}</Badge>
+          <Badge variant="outline">
+            {record.agents.evidenceAgent.articles.length} artigos fornecidos
+          </Badge>
+        </div>
+        <p className="mt-2 break-all font-mono text-[10px]">
+          {record.id} · {record.createdAt} · {record.agentVersion} · {record.promptVersion}
+        </p>
+        <Block
+          title="Interpretação (inferência, não fato demonstrado)"
+          body={record.agents.interpreter.interpretation}
+        />
+        <Claims claims={record.agents.interpreter.claims} />
+        <Block title="Hipótese científica" body={record.hypothesisText} />
+        <Block
+          title={
+            synthesis.mechanismStatus === "speculative"
+              ? "Mecanismo proposto — ESPECULATIVO"
+              : "Mecanismo proposto — NÃO DETERMINADO"
+          }
+          body={record.mechanismText}
+        />
+        <Block title="Raciocínio pela ponte B" body={synthesis.bridge_reasoning} />
+        <Claims claims={synthesis.claims} />
+        <Block
+          title="Nível de suporte"
+          body="Caminhos bibliográficos observados; mecanismo e hipótese ainda não demonstrados."
+        />
+        <Block title="Limitações" body={record.limitations.join(" ")} />
+        <p className="mt-3 text-xs">
+          Agente temporal: evidências até {record.knowledgeCutoff}; MeSH histórico{" "}
+          {record.agents.temporalAgent.meshHistoricalAvailable
+            ? "disponível para distância"
+            : "indisponível — não usado como distância histórica"}
+          .
+        </p>
+        <details className="mt-3 text-xs">
+          <summary>Artigos efetivamente fornecidos aos agentes</summary>
+          <Articles articles={record.agents.evidenceAgent.articles} />
+        </details>
+      </section>
+      <section className="panel p-5">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <FlaskConical className="size-4" />
+          Previsão testável
+        </h3>
+        <p className="mt-2 text-sm">{record.testablePrediction}</p>
+      </section>
+      <section className="panel p-5">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <ShieldAlert className="size-4" />
+          Agente cético / contradições
+        </h3>
+        <p className="mt-2 text-sm">{record.agents.contradictionAgent.critique}</p>
+        <Claims claims={record.agents.contradictionAgent.claims} />
+        <p className="mt-2 text-xs">
+          Ausência de evidência não é refutação. Alternativas:{" "}
+          {record.agents.contradictionAgent.alternatives.join(" ")}
+        </p>
+      </section>
+      <section className="panel space-y-3 p-5">
+        <h3 className="flex items-center gap-2 font-semibold">
+          <SearchCheck className="size-4" />
+          Veredito na literatura real — validação futura
+        </h3>
+        <Button
+          disabled={validation.pending}
+          onClick={() =>
+            validation.run({
+              operation: "validate",
+              hypothesisId: record.id,
+              validationEndYear: maxYear,
+            })
+          }
+        >
+          {validation.pending
+            ? "Consultando evidências…"
+            : `Verificar literatura posterior a ${record.knowledgeCutoff}`}
+        </Button>
+        <ErrorMessage error={validation.error ?? history.error?.message} />
+        {checks.map((check) => (
+          <details
+            key={check.id}
+            open={check.id === checks[0]?.id}
+            className="rounded border border-border p-3"
+          >
+            <summary className="cursor-pointer text-sm">
+              {LABELS[check.validationStatus]} · {check.futureArticleCount} artigos ·{" "}
+              {check.createdAt}
+            </summary>
+            <p className="mt-2 text-sm">{check.rationale}</p>
+            <p className="text-xs">
+              Janela {check.validationStartYear}–{check.validationEndYear}. Primeiro sinal:{" "}
+              {check.firstFutureEvidenceYear ?? "nenhum"}.{" "}
+              {check.review
+                ? `Revisão humana: ${check.review.reviewer}`
+                : "Avaliação bibliográfica automática."}
+            </p>
+            <Articles articles={check.futureEvidence} />
+            {check.evidenceTruncated && (
+              <p className="text-xs">
+                Lista limitada aos primeiros 100 artigos; total calculado no banco.
+              </p>
+            )}
+          </details>
+        ))}
+        {!!checks.length && (
+          <details className="rounded border border-border p-3">
+            <summary className="cursor-pointer text-sm">
+              Registrar revisão humana da hipótese e das evidências
+            </summary>
+            <p className="my-2 text-xs">
+              Classificação qualitativa identificada; não é julgamento absoluto de verdade.
+            </p>
+            <Input
+              placeholder="Identificação do revisor"
+              aria-label="Revisor"
+              value={reviewer}
+              onChange={(e) => setReviewer(e.target.value)}
+            />
+            <select
+              aria-label="Status da revisão"
+              className="my-2 w-full rounded border border-border bg-background p-2 text-sm"
+              value={reviewStatus}
+              onChange={(e) => setReviewStatus(e.target.value as typeof reviewStatus)}
+            >
+              {(
+                ["INCONCLUSIVE", "PARTIAL_SUPPORT", "SUBSTANTIAL_SUPPORT", "CONTRADICTED"] as const
+              ).map((status) => (
+                <option key={status} value={status}>
+                  {LABELS[status]}
+                </option>
+              ))}
+            </select>
+            <Input
+              aria-label="PMIDs da revisão"
+              placeholder="PMIDs posteriores listados, separados por vírgula"
+              value={pmids}
+              onChange={(e) => setPmids(e.target.value)}
+            />
+            <textarea
+              aria-label="Justificativa da revisão"
+              className="my-2 w-full rounded border border-border bg-background p-2 text-sm"
+              placeholder="Explique a correspondência ou contradição com o mecanismo/previsão, e suas limitações."
+              value={rationale}
+              onChange={(e) => setRationale(e.target.value)}
+            />
+            <Button
+              disabled={!reviewer.trim() || !rationale.trim() || validation.pending}
+              onClick={() =>
+                validation.run({
+                  operation: "review",
+                  hypothesisId: record.id,
+                  validationEndYear: maxYear,
+                  review: {
+                    status: reviewStatus,
+                    reviewer,
+                    rationale,
+                    pmids: pmids
+                      .split(",")
+                      .map((p) => p.trim())
+                      .filter(Boolean),
+                  },
+                })
+              }
+            >
+              Acrescentar revisão ao registro
+            </Button>
+          </details>
+        )}
+      </section>
+    </>
+  );
+}
+
+function ErrorMessage({ error }: { error?: string | undefined }) {
+  return error ? (
+    <p role="alert" className="mt-2 text-sm text-destructive">
+      {error}
+    </p>
+  ) : null;
+}
 function Block({ title, body }: { title: string; body: string }) {
   return (
     <div className="mt-4">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{title}</p>
       <p className="mt-1 text-sm leading-relaxed">{body}</p>
     </div>
+  );
+}
+function Articles({ articles }: { articles: EvidenceArticle[] }) {
+  return (
+    <ul className="mt-2 space-y-2">
+      {articles.map((article) => (
+        <li key={article.pmid} className="text-xs">
+          <a
+            className="text-primary underline"
+            target="_blank"
+            rel="noreferrer"
+            href={`https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`}
+          >
+            PMID {article.pmid} · [{article.year}] {article.title}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+function Claims({ claims }: { claims: AgentClaim[] }) {
+  return (
+    <ul className="mt-2 space-y-2">
+      {claims.map((claim, i) => (
+        <li key={i} className="rounded border border-border p-2 text-xs">
+          <strong>
+            {
+              { inference: "Inferência", hypothesis: "Hipótese", speculation: "Especulação" }[
+                claim.kind
+              ]
+            }
+            :
+          </strong>{" "}
+          {claim.statement}
+          {claim.evidence.map((e, j) => (
+            <p key={j} className="mt-1 text-muted-foreground">
+              PMID {e.pmid}: “{e.quote}”
+            </p>
+          ))}
+        </li>
+      ))}
+    </ul>
   );
 }

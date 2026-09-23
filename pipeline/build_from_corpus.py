@@ -291,7 +291,8 @@ def pair_features(pairs, adj, meta):
             else:
                 break
         tree_dist = (len(pa_parts) + len(pc_parts) - 2 * common) / 12.0
-        ba, bc = branch.get(a, "Z"), branch.get(c, "Z")
+        if not ta or not tc: tree_dist = 0.0  # unavailable structural feature, never current taxonomy
+        ba, bc = branch.get(a, ""), branch.get(c, "")
         drug_disease = 1.0 if {ba, bc} & {"D"} and {ba, bc} & {"C", "F"} else 0.0
         rows[i] = [
             cn,
@@ -303,7 +304,7 @@ def pair_features(pairs, adj, meta):
             math.log1p(bstr),
             math.log1p(bmax),
             min(da, dc) / max(da, dc),
-            1.0 if ba == bc else 0.0,
+            1.0 if ba and bc and ba == bc else 0.0,
             tree_dist,
             min(growth.get(a, 0.0), growth.get(c, 0.0)),
             max(growth.get(a, 0.0), growth.get(c, 0.0)),

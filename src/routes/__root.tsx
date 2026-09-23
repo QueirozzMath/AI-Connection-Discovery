@@ -81,12 +81,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       q?: unknown;
       op?: unknown;
       seedIds?: unknown;
+      focus?: unknown;
     },
   ) => ({
     cats: typeof s.cats === "string" ? s.cats : "",
     q: typeof s.q === "string" ? s.q : "",
     op: s.op === "and" ? ("and" as const) : ("or" as const),
     seedIds: typeof s.seedIds === "string" ? s.seedIds : "",
+    focus: typeof s.focus === "string" ? s.focus : "",
     from: Number.isInteger(Number(s.from)) ? Number(s.from) : undefined,
     to: Number.isInteger(Number(s.to)) ? Number(s.to) : undefined,
   }),

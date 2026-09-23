@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { mapCatalog } from "@/lib/map-api.functions";
 import type { MapCatalog } from "@/lib/map-api-types";
 import type { ExplorationPeriod } from "@/lib/temporal";
+import { periodFromSearch } from "@/lib/period-url";
 
 type TemporalState = {
   period: ExplorationPeriod | null;
@@ -27,14 +28,8 @@ export function TemporalProvider({ children }: { children: ReactNode }) {
   });
   const catalog = query.data ?? null;
   useEffect(() => {
-    const params = new URLSearchParams(searchStr);
-    const legacy = params.get("year") ?? params.get("cutoff");
-    const explicit = params.has("from") || params.has("to") || !!legacy;
-    const start = Number(params.get("from") ?? legacy),
-      end = Number(params.get("to") ?? legacy);
-    if (explicit && Number.isInteger(start) && Number.isInteger(end))
-      setPeriod({ startYear: start, endYear: end });
-    else if (explicit) setPeriod(null);
+    const parsed = periodFromSearch(searchStr);
+    if (parsed !== undefined) setPeriod(parsed);
     else if (catalog) setPeriod((p) => p ?? { startYear: catalog.end, endYear: catalog.end });
   }, [searchStr, catalog]);
   return (

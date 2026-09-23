@@ -15,7 +15,7 @@ import {
   summarizeMap,
 } from "@/lib/map-selection";
 import { MapArticles } from "@/components/MapArticles";
-import { mapPeriodGraph } from "@/lib/map-api.functions";
+import { mapPeriodGraph, searchConcepts } from "@/lib/map-api.functions";
 import type { MapCatalog, TemporalGraph } from "@/lib/map-api-types";
 import { MapToolbar } from "@/components/MapToolbar";
 import type { MapCommand, MapAction, MapTool } from "@/lib/map-navigation";
@@ -92,9 +92,18 @@ export const Route = createFileRoute("/")({
 
 function MapPage() {
   const { period, catalog } = useTemporal();
+  const search = Route.useSearch();
   const periodQuery = useQuery({
-    queryKey: ["period-graph", period, catalog?.revision],
-    queryFn: () => mapPeriodGraph({ data: period! }),
+    queryKey: ["period-graph", period, catalog?.revision, search.focus, search.seedIds],
+    queryFn: () =>
+      mapPeriodGraph({
+        data: {
+          ...period!,
+          focusIds: [
+            ...new Set([search.focus, ...search.seedIds.split(",")].filter(Boolean)),
+          ].slice(0, 20),
+        },
+      }),
     enabled: !!period && !!catalog,
   });
   if (!period || !catalog)
@@ -109,7 +118,7 @@ function MapPage() {
     );
   return (
     <MapForCutoff
-      key={`${period.startYear}:${period.endYear}:${catalog.revision}`}
+      key={`${period.startYear}:${period.endYear}:${catalog.revision}:${search.focus}:${search.seedIds}`}
       cutoff={period.endYear}
       catalog={catalog}
       temporal={periodQuery.data}
@@ -256,13 +265,31 @@ function MapForCutoff({
     [seeds, matches],
   );
   const summary = useMemo(() => summarizeMap(graph, matches), [graph, matches]);
-  const suggestions = useMemo(
-    () =>
-      deferredQuery.trim() && baseMatches
-        ? [...baseMatches].slice(0, 8).map((i) => ({ n: graph.nodes[i]!, i }))
-        : [],
-    [graph, baseMatches, deferredQuery],
-  );
+  const conceptQuery = useQuery({
+    queryKey: [
+      "concept-search",
+      start,
+      end,
+      catalog.revision,
+      deferredQuery,
+      selectedCategories,
+      search.op,
+    ],
+    queryFn: () =>
+      searchConcepts({
+        data: {
+          startYear: start,
+          endYear: end,
+          q: deferredQuery,
+          categories: selectedCategories,
+          operator: search.op,
+        },
+      }),
+    enabled: !!deferredQuery.trim(),
+  });
+  const suggestions = (conceptQuery.data?.items ?? [])
+    .slice(0, 12)
+    .map((n) => ({ n, i: graph.nodes.findIndex((node) => node.id === n.id) }));
   useEffect(() => {
     setHighlight(null);
     setPairs(null);
@@ -379,6 +406,26 @@ function MapForCutoff({
                   <button
                     className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-secondary"
                     onClick={() => {
+                      if (i < 0) {
+                        void navigate({
+                          search: (previous) => ({
+                            ...previous,
+                            focus: n.id,
+                            q: mode === "seeded" ? "" : n.label,
+                            seedIds:
+                              mode === "seeded"
+                                ? [
+                                    ...new Set([
+                                      ...search.seedIds.split(",").filter(Boolean),
+                                      n.id,
+                                    ]),
+                                  ].join(",")
+                                : previous.seedIds,
+                          }),
+                          replace: true,
+                        });
+                        return;
+                      }
                       setSelected(i);
                       setSearchOpen(false);
                       setQuery(mode === "seeded" ? "" : n.label);
@@ -387,12 +434,23 @@ function MapForCutoff({
                   >
                     <span className="truncate">{n.label}</span>
                     <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                      {n.tree || n.cat} · {n.deg}
+                      {n.tree || n.category} · {n.pubs} artigos
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+          {conceptQuery.isError && (
+            <p role="alert" className="text-xs text-destructive">
+              Falha ao pesquisar o corpus.{" "}
+              <button onClick={() => void conceptQuery.refetch()}>Tentar novamente</button>
+            </p>
+          )}
+          {deferredQuery && conceptQuery.data && (
+            <p className="text-xs text-muted-foreground">
+              {conceptQuery.data.total} conceitos no corpus deste período; o mapa tem limite visual.
+            </p>
           )}
         </div>
 

@@ -41,6 +41,16 @@ def article_event(article, mesh_only=False):
                      "major": descriptor.get("MajorTopicYN") == "Y"})
     record = {"op": "upsert", "pmid": pmid,
               "year": int(year_match[1]) if year_match else None, "mesh": mesh}
+    record['annotations']={
+        'qualifiers':[{'descriptorId':heading.find('DescriptorName').get('UI',''),
+                       'id':q.get('UI',''),'label':''.join(q.itertext()),'major':q.get('MajorTopicYN')=='Y'}
+                      for heading in citation.findall('MeshHeadingList/MeshHeading') if heading.find('DescriptorName') is not None
+                      for q in heading.findall('QualifierName')],
+        'substances':[{'id':c.find('NameOfSubstance').get('UI',''),'label':text(c,'NameOfSubstance'),'registryNumber':text(c,'RegistryNumber')}
+                      for c in citation.findall('ChemicalList/Chemical') if c.find('NameOfSubstance') is not None],
+        'dateRevised':{part:text(citation,'DateRevised/'+part) for part in ('Year','Month','Day')},
+        'meshVersion':None,  # Citation XML does not establish a historical taxonomy release.
+    }
     if not mesh_only:
         record.update({"title": text(citation, "Article/ArticleTitle"),
                        "journal": text(citation, "Article/Journal/Title"),

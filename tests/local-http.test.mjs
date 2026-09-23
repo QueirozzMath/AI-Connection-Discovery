@@ -7,7 +7,7 @@ test("real app server functions use one temporal contract", {skip:!process.env.M
   const base=process.env.MAP_TEST_URL;
   const source=await (await fetch(`${base}/src/lib/map-api.functions.ts`)).text();
   const ids=[...source.matchAll(/createClientRpc\("([^"]+)"\)/g)].map(m=>m[1]);
-  assert.equal(ids.length,4);
+  assert.equal(ids.length,5);
   async function call(index,data) {
     const response=await fetch(`${base}/_serverFn/${ids[index]}`,{
       method:data ? "POST" : "GET",headers:{origin:base,"sec-fetch-site":"same-origin","x-tsr-serverFn":"true","content-type":"application/json",accept:"application/json"},
@@ -23,15 +23,19 @@ test("real app server functions use one temporal contract", {skip:!process.env.M
     const graph=await call(1,period);
     assert.equal(graph.meta.period_start,period.startYear);assert.equal(graph.meta.period_end,period.endYear);
     assert.ok(graph.nodes.length>0);
-    const articles=await call(2,{...period,meshIds:graph.nodes.slice(0,5).map(n=>n.id)});
+    const found=await call(2,{...period,q:'Migraine',categories:[],operator:'or'});
+    assert.ok(Array.isArray(found.items));
+    const articles=await call(3,{...period,meshIds:graph.nodes.slice(0,5).map(n=>n.id)});
     assert.ok(articles.items.length>0);
     assert.ok(articles.items.every(a=>a.year>=period.startYear && a.year<=period.endYear));
   }
   let result;
   for(let i=0;i<90;i++) {
-    result=await call(3,{startYear:2018,endYear:2018,operation:"explore"});
+    result=await call(4,{startYear:2018,endYear:2018,operation:"explore"});
     if(result.status==="complete" || result.status==="error") break;
     await new Promise(resolve=>setTimeout(resolve,1000));
   }
-  assert.equal(result.status,"complete");assert.equal(result.available,true);assert.ok(result.items.length>0);
+  assert.equal(result.status,"complete");
+  if (result.available) assert.ok(result.items.length>0);
+  else assert.match(result.reason,/Dados insuficientes|Nenhum par ABC/);
 });

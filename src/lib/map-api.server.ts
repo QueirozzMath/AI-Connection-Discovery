@@ -1,9 +1,9 @@
 /** Only this server module knows the private query service address and token. */
 export async function queryMapService<T>(
-  path: "metadata" | "graph" | "articles" | "analysis" | "evidence",
+  path: "metadata" | "graph" | "articles" | "analysis" | "evidence" | "concepts" | "lbd",
   body?: unknown,
 ): Promise<T> {
-  if (!import.meta.env.DEV && path !== "analysis") {
+  if (!import.meta.env.DEV && ["metadata", "graph", "articles", "evidence"].includes(path)) {
     const { env } = await import("cloudflare:workers");
     if (env.HYPERDRIVE) {
       const { queryPostgres } = await import("./postgres-map.server");

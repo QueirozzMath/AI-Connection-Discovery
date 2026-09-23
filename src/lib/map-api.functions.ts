@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { MapArticles, MapCatalog, TemporalGraph } from "./map-api-types";
 import type { Candidate, LinkModel, Metrics } from "./science-data";
 
-import { Period, PeriodFields } from "./temporal";
+import { PeriodFields } from "./temporal";
 export const mapCatalog = createServerFn({ method: "GET" }).handler(
   async (): Promise<MapCatalog> => {
     const { queryMapService } = await import("./map-api.server");
@@ -11,11 +11,35 @@ export const mapCatalog = createServerFn({ method: "GET" }).handler(
   },
 );
 export const mapPeriodGraph = createServerFn({ method: "POST" })
-  .validator((input: unknown) => Period.parse(input))
+  .validator((input: unknown) =>
+    PeriodFields.extend({ focusIds: z.array(z.string().max(24)).max(20).optional() })
+      .refine((p) => p.startYear <= p.endYear)
+      .parse(input),
+  )
   .handler(async ({ data }): Promise<TemporalGraph> => {
     const { queryMapService } = await import("./map-api.server");
     return queryMapService<TemporalGraph>("graph", data);
   });
+export const searchConcepts = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    PeriodFields.extend({
+      q: z.string().max(300),
+      categories: z.array(z.string().max(8)).max(26),
+      operator: z.enum(["and", "or"]),
+      seedIds: z.array(z.string().max(24)).max(20).optional(),
+    }).parse(input),
+  )
+  .handler(
+    async ({
+      data,
+    }): Promise<{
+      items: { id: string; label: string; category: string; tree: string; pubs: number }[];
+      total: number;
+    }> => {
+      const { queryMapService } = await import("./map-api.server");
+      return queryMapService("concepts", data);
+    },
+  );
 export const mapArticles = createServerFn({ method: "POST" })
   .validator((input: unknown) =>
     PeriodFields.extend({

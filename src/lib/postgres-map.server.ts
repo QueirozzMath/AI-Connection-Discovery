@@ -24,8 +24,8 @@ export async function queryPostgres(connectionString: string, path: string, inpu
       const rows = (
         await db.query(
           `SELECT m.*,SUM(n.count)::int AS pubs FROM node_year n JOIN mesh m ON m.id=n.mesh_id
-        WHERE n.year BETWEEN $1 AND $2 GROUP BY m.id ORDER BY pubs DESC,m.id LIMIT 4500`,
-          [start, end],
+        WHERE n.year BETWEEN $1 AND $2 GROUP BY m.id ORDER BY CASE WHEN m.id=ANY($3::text[]) THEN 0 ELSE 1 END,pubs DESC,m.id LIMIT 4500`,
+          [start, end, (input as { focusIds?: string[] }).focusIds ?? []],
         )
       ).rows;
       const ids = rows.map((r) => r.id);
@@ -33,8 +33,8 @@ export async function queryPostgres(connectionString: string, path: string, inpu
         await db.query(
           `SELECT mesh_a,mesh_b,SUM(weight)::int AS weight FROM pair_year
         WHERE year BETWEEN $1 AND $2 AND mesh_a=ANY($3::text[]) AND mesh_b=ANY($3::text[])
-        GROUP BY mesh_a,mesh_b ORDER BY weight DESC,mesh_a,mesh_b LIMIT 30000`,
-          [start, end, ids],
+        GROUP BY mesh_a,mesh_b ORDER BY CASE WHEN mesh_a=ANY($4::text[]) OR mesh_b=ANY($4::text[]) THEN 0 ELSE 1 END,weight DESC,mesh_a,mesh_b LIMIT 30000`,
+          [start, end, ids, (input as { focusIds?: string[] }).focusIds ?? []],
         )
       ).rows;
       const growthRows = (

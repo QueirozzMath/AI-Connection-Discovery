@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 import sqlite3
 import os
+from datetime import datetime, timezone
+import uuid
 from sql_backend import connect_database
 
 SCHEMA = """
@@ -45,10 +47,19 @@ CREATE TABLE IF NOT EXISTS pair_year (
  PRIMARY KEY(year,mesh_a,mesh_b)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS pair_year_mesh ON pair_year(mesh_a,mesh_b,year);
+CREATE INDEX IF NOT EXISTS pair_year_reverse ON pair_year(mesh_b,year,mesh_a);
 CREATE TABLE IF NOT EXISTS imports (
  source TEXT PRIMARY KEY, checksum TEXT NOT NULL, line INTEGER NOT NULL, complete INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS article_annotations (
+ pmid TEXT PRIMARY KEY REFERENCES articles(pmid) ON DELETE CASCADE, payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS article_revisions (
+ id TEXT PRIMARY KEY, pmid TEXT NOT NULL, observed_at TEXT NOT NULL,
+ source TEXT, previous_payload TEXT, event_payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS article_revisions_pmid ON article_revisions(pmid,observed_at);
 CREATE TABLE IF NOT EXISTS ingestion_files (
  filename TEXT PRIMARY KEY, kind TEXT NOT NULL, cycle INTEGER NOT NULL,
  url TEXT NOT NULL, checksum TEXT, size BIGINT, downloaded_at TEXT,
@@ -84,10 +95,17 @@ def adjust(db, pmid, delta, nodes, pairs):
         pairs[(year, a, b)] += delta
 
 
-def apply_event(db, record, trees, positions, node_delta, pair_delta):
+def apply_event(db, record, trees, positions, node_delta, pair_delta, source=None):
     pmid = str(record["pmid"])
     if not pmid.isdigit():
         raise ValueError("Invalid PMID")
+    previous = db.execute("SELECT * FROM articles WHERE pmid=?", (pmid,)).fetchone()
+    if previous:
+        snapshot=dict(previous)
+        snapshot['mesh']=[dict(r) for r in db.execute('SELECT mesh_id,major FROM article_mesh WHERE pmid=?',(pmid,))]
+        annotations=db.execute('SELECT payload FROM article_annotations WHERE pmid=?',(pmid,)).fetchone()
+        snapshot['annotations']=json.loads(annotations[0]) if annotations else None
+        db.execute('INSERT INTO article_revisions VALUES(?,?,?,?,?,?)',(str(uuid.uuid4()),pmid,datetime.now(timezone.utc).isoformat(),source,json.dumps(snapshot,ensure_ascii=False),json.dumps(record,ensure_ascii=False)))
     adjust(db, pmid, -1, node_delta, pair_delta)
     if record.get("op") == "delete":
         db.execute("DELETE FROM articles WHERE pmid=?", (pmid,))
@@ -102,6 +120,8 @@ def apply_event(db, record, trees, positions, node_delta, pair_delta):
       journal=excluded.journal, doi=excluded.doi, authors=excluded.authors""",
       (pmid, record.get("year"), value("title"), value("journal"), value("doi"), value("authors")))
     db.execute("DELETE FROM article_mesh WHERE pmid=?", (pmid,))
+    if 'annotations' in record:
+        db.execute('INSERT INTO article_annotations VALUES(?,?) ON CONFLICT(pmid) DO UPDATE SET payload=excluded.payload',(pmid,json.dumps(record['annotations'],ensure_ascii=False)))
     for item in record.get("mesh", []):
         mid, label, major = (item["id"], item["label"], item.get("major", False)) if isinstance(item, dict) else item
         if not mid:
@@ -161,7 +181,7 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None, i
                         if record.get("op") == "delete": deletes += int(exists)
                         elif exists: updates += 1
                         else: inserts += 1
-                        apply_event(db, record, trees, positions, nodes, pairs)
+                        apply_event(db, record, trees, positions, nodes, pairs,source+':'+checksum)
                     db.executemany("""INSERT INTO node_year VALUES(?,?,?) ON CONFLICT(year,mesh_id)
                       DO UPDATE SET count=node_year.count+excluded.count""", ((*key, value) for key, value in nodes.items() if value))
                     db.executemany("""INSERT INTO pair_year VALUES(?,?,?,?) ON CONFLICT(year,mesh_a,mesh_b)
