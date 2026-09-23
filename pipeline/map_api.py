@@ -11,6 +11,7 @@ import json
 import math
 import os
 from pathlib import Path
+import socket
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -176,6 +177,17 @@ def evidence_query(db, data, start, end):
     return {"a": articles(ids[0]), "c": articles(ids[1]), "together": together, "bridges": bridges}
 
 
+class MapHTTPServer(ThreadingHTTPServer):
+    """Reject a second API process on the same address, including on Windows."""
+
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 class Handler(BaseHTTPRequestHandler):
     def respond(self, code, payload):
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -271,8 +283,9 @@ def main():
         if isinstance(DB, Path): DB.parent.mkdir(parents=True, exist_ok=True)
         from ingestion_jobs import start_worker
         start_worker(DB, Path(os.getenv("PUBMED_ROOT", "pipeline/data")))
+    server = MapHTTPServer((args.host, args.port), Handler)
     print(f"Map API: http://{args.host}:{args.port}", flush=True)
-    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+    server.serve_forever()
 
 
 if __name__ == "__main__":

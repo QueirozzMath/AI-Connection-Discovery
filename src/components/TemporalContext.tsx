@@ -11,6 +11,8 @@ type TemporalState = {
   setPeriod: (period: ExplorationPeriod) => void;
   revision: string | undefined;
   loading: boolean;
+  error: boolean;
+  retry: () => void;
 };
 const Context = createContext<TemporalState | null>(null);
 export function TemporalProvider({ children }: { children: ReactNode }) {
@@ -50,6 +52,10 @@ export function TemporalProvider({ children }: { children: ReactNode }) {
         },
         revision: catalog?.revision,
         loading: query.isPending,
+        error: query.isError,
+        retry: () => {
+          void query.refetch();
+        },
       }}
     >
       {children}
@@ -64,16 +70,25 @@ export function useTemporal() {
   return value;
 }
 export function PeriodSelector() {
-  const { period, catalog, setPeriod, loading } = useTemporal();
+  const { period, catalog, setPeriod, loading, error, retry } = useTemporal();
   if (!period || !catalog)
     return (
-      <p className="px-4 text-xs" role="status">
-        {loading
-          ? "Carregando período…"
-          : catalog
-            ? "Período inválido na URL. Informe anos inteiros em from e to."
-            : "Serviço científico indisponível. Inicie a API de dados."}
-      </p>
+      <div className="px-4 text-xs" role="status">
+        {loading ? (
+          "Carregando período…"
+        ) : error ? (
+          <>
+            Não foi possível carregar o período.{" "}
+            <button className="underline" onClick={retry}>
+              Tentar novamente
+            </button>
+          </>
+        ) : catalog ? (
+          "Período inválido na URL. Informe anos inteiros em from e to."
+        ) : (
+          "Serviço científico indisponível. Inicie a API de dados."
+        )}
+      </div>
     );
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-xs">

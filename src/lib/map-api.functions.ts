@@ -5,13 +5,9 @@ import type { Candidate, LinkModel, Metrics } from "./science-data";
 
 import { Period, PeriodFields } from "./temporal";
 export const mapCatalog = createServerFn({ method: "GET" }).handler(
-  async (): Promise<MapCatalog | null> => {
-    try {
-      const { queryMapService } = await import("./map-api.server");
-      return await queryMapService<MapCatalog>("metadata");
-    } catch {
-      return null;
-    }
+  async (): Promise<MapCatalog> => {
+    const { queryMapService } = await import("./map-api.server");
+    return queryMapService<MapCatalog>("metadata");
   },
 );
 export const mapPeriodGraph = createServerFn({ method: "POST" })
