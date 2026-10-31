@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
-  type SearchSchemaInput,
   Outlet,
   Link,
   createRootRouteWithContext,
@@ -8,12 +7,13 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { TemporalProvider, PeriodSelector } from "@/components/TemporalContext";
+import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppNav } from "@/components/AppNav";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 function NotFoundComponent() {
   return (
@@ -40,6 +40,9 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  useEffect(() => {
+    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+  }, [error]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -73,28 +76,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  validateSearch: (
-    s: SearchSchemaInput & {
-      from?: unknown;
-      to?: unknown;
-      cats?: unknown;
-      q?: unknown;
-      op?: unknown;
-      seedIds?: unknown;
-    },
-  ) => ({
-    cats: typeof s.cats === "string" ? s.cats : "",
-    q: typeof s.q === "string" ? s.q : "",
-    op: s.op === "and" ? ("and" as const) : ("or" as const),
-    seedIds: typeof s.seedIds === "string" ? s.seedIds : "",
-    from: Number.isInteger(Number(s.from)) ? Number(s.from) : undefined,
-    to: Number.isInteger(Number(s.to)) ? Number(s.to) : undefined,
-  }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "MeSHMap — mapa da ciência e descoberta desconexa" },
+      { title: "AI Connection Discovery — mapa da ciência e descoberta desconexa" },
       {
         name: "description",
         content:
@@ -104,6 +90,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg?v=brain-agents-3" },
+      { rel: "icon", type: "image/x-icon", href: "/favicon.ico?v=brain-agents-3" },
       {
         rel: "stylesheet",
         href: appCss,
@@ -125,8 +113,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" className="dark">
+    <html lang="pt-BR" className="dark" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("ia-discovery-theme");document.documentElement.classList.toggle("dark",t!=="light");document.documentElement.style.colorScheme=t!=="light"?"dark":"light"}catch(e){}`,
+          }}
+        />
         <HeadContent />
       </head>
       <body>
@@ -142,17 +135,16 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TemporalProvider>
+      <ThemeProvider>
         <div className="flex h-screen flex-col bg-background">
           <AppNav />
-          <PeriodSelector />
           <main className="min-h-0 flex-1 overflow-auto grid-backdrop">
             {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
             <Outlet />
           </main>
         </div>
         <Toaster position="top-right" richColors />
-      </TemporalProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

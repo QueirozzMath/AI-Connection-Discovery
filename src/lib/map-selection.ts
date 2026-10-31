@@ -1,20 +1,5 @@
 import type { ScienceGraph } from "./science-data";
 
-export function selectKeywordNodes(
-  graph: ScienceGraph,
-  allowed: Set<number> | null,
-  seeds: number[],
-) {
-  if (!seeds.length) return allowed;
-  const active = new Set(seeds.filter((i) => !allowed || allowed.has(i)));
-  const neighbourhood = new Set(active);
-  for (const [a, b] of graph.edges) {
-    if (active.has(a)) neighbourhood.add(b);
-    if (active.has(b)) neighbourhood.add(a);
-  }
-  return new Set([...neighbourhood].filter((i) => !allowed || allowed.has(i)));
-}
-
 export const normalizeMapText = (value: string) =>
   value
     .normalize("NFD")

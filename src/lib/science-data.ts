@@ -14,13 +14,9 @@ export interface GraphNode {
   pubs: number;
   growth: number;
   growthAvailable?: boolean;
-  growthReason?: string | null;
 }
 
 export interface LinkModel {
-  available?: boolean;
-  reason?: string;
-  trainedThrough?: number;
   type: string;
   mean: number[];
   std: number[];
@@ -46,6 +42,9 @@ export interface ScienceGraph {
 }
 
 export interface Candidate {
+  priority?: number;
+  bridgeSpecificity?: number;
+  selection_method?: string;
   rank: number;
   a: string;
   c: string;
@@ -61,6 +60,7 @@ export interface Candidate {
 
 export interface Metrics {
   demo?: boolean;
+  dynamic?: boolean;
   generated_at: string;
   source?: string;
   cutoff_year: number;
@@ -100,6 +100,9 @@ export interface DataIndex {
   corpus_years: [number, number];
   cutoffs: number[];
   default_cutoff: number;
+  mesh_version?: number;
+  mesh_descriptors?: number;
+  mesh_terms?: number;
 }
 
 export interface TimelinePoint {
@@ -137,22 +140,36 @@ export const timelineQuery = queryOptions({
 export const graphQuery = (cutoff: number) =>
   queryOptions({
     queryKey: ["science", "graph", cutoff],
-    queryFn: () => getJson<ScienceGraph>(`/data/graph-${cutoff}.json`),
+    queryFn: async () => {
+      const { dynamicCutoffBundle, isPublishedCutoff } = await import("./dynamic-cutoff");
+      return isPublishedCutoff(cutoff)
+        ? getJson<ScienceGraph>(`/data/graph-${cutoff}.json`)
+        : (await dynamicCutoffBundle(cutoff)).graph;
+    },
     staleTime: Infinity,
   });
 
 export const candidatesQuery = (cutoff: number) =>
   queryOptions({
     queryKey: ["science", "candidates", cutoff],
-    queryFn: () =>
-      getJson<{ cutoff_year: number; items: Candidate[] }>(`/data/candidates-${cutoff}.json`),
+    queryFn: async () => {
+      const { dynamicCutoffBundle, isPublishedCutoff } = await import("./dynamic-cutoff");
+      return isPublishedCutoff(cutoff)
+        ? getJson<{ cutoff_year: number; items: Candidate[] }>(`/data/candidates-${cutoff}.json`)
+        : (await dynamicCutoffBundle(cutoff)).candidates;
+    },
     staleTime: Infinity,
   });
 
 export const metricsQuery = (cutoff: number) =>
   queryOptions({
     queryKey: ["science", "metrics", cutoff],
-    queryFn: () => getJson<Metrics>(`/data/metrics-${cutoff}.json`),
+    queryFn: async () => {
+      const { dynamicCutoffBundle, isPublishedCutoff } = await import("./dynamic-cutoff");
+      return isPublishedCutoff(cutoff)
+        ? getJson<Metrics>(`/data/metrics-${cutoff}.json`)
+        : (await dynamicCutoffBundle(cutoff)).metrics;
+    },
     staleTime: Infinity,
   });
 
@@ -173,10 +190,36 @@ export const CATEGORY_COLORS: Record<string, string> = {
   M: "#ffb3d1",
   N: "#b8c4ff",
   V: "#9aa4b8",
+  X: "#94a3b8",
   Z: "#d4b483",
 };
 
-export const catColor = (cat: string) => CATEGORY_COLORS[cat] ?? "#9aa4b8";
+const LIGHT_CATEGORY_COLORS: Record<string, string> = {
+  A: "#087b92",
+  B: "#278653",
+  C: "#c54862",
+  D: "#a56808",
+  E: "#4b6bb6",
+  F: "#a34bb4",
+  G: "#118775",
+  H: "#727c18",
+  I: "#bb6230",
+  J: "#2384a5",
+  K: "#8b5db2",
+  L: "#267c62",
+  M: "#b65b82",
+  N: "#6267ac",
+  V: "#64748b",
+  X: "#64748b",
+  Z: "#8e7040",
+};
+export const catColor = (cat: string) => {
+  const light =
+    typeof document !== "undefined" &&
+    document.documentElement?.classList &&
+    !document.documentElement.classList.contains("dark");
+  return (light ? LIGHT_CATEGORY_COLORS : CATEGORY_COLORS)[cat] ?? "#64748b";
+};
 
 export const FEATURE_LABELS: Record<string, string> = {
   common_neighbors: "Vizinhos comuns",

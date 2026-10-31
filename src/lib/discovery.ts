@@ -54,9 +54,65 @@ export interface InferredPair {
   prob: number;
   bridges: number[];
   features: number[];
+  priority: number;
+  bridgeSpecificity: number;
+}
+
+const GENERIC = new Set(
+  "humans|animals|male|female|adult|aged|middle aged|adolescent|child|infant|young adult|mice|rats|time factors|risk factors|treatment outcome|follow-up studies|retrospective studies|prospective studies|cohort studies|cross-sectional studies|case-control studies|sensitivity and specificity|reproducibility of results|public health".split(
+    "|",
+  ),
+);
+for (const label of [
+  "gene expression",
+  "proteins",
+  "dna",
+  "rna",
+  "cells",
+  "molecular sequence data",
+  "amino acid sequence",
+  "base sequence",
+  "biological phenomena",
+  "chemical phenomena",
+  "chemistry, physical",
+  "water",
+  "water supply",
+  "statistics as topic",
+])
+  GENERIC.add(label);
+
+/** Full-network degree and publication prevalence remain the reference even
+ * when a filter restricts the discovery subgraph. */
+export function bridgeInformation(graph: ScienceGraph, b: number): number {
+  const node = graph.nodes[b]!;
+  if (
+    GENERIC.has(node.label.toLowerCase()) ||
+    /^(history(?:,| of|$)|research$|population(?:$| dynamics$)|demography$|developed countries$|developing countries$|forecasting$|anatomy$|medical illustration$|risk assessment$|rats, inbred strains$|mice, inbred strains$)/i.test(
+      node.label,
+    ) ||
+    ["Z", "M", "V"].includes(node.cat)
+  )
+    return 0;
+  const coverage = node.deg / Math.max(1, graph.nodes.length - 1);
+  const prevalence = node.pubs / Math.max(1, graph.meta.n_articles);
+  if (coverage >= 0.18 || prevalence >= 0.12) return 0;
+  return Math.max(0, 1 - coverage / 0.18) * Math.max(0, 1 - prevalence / 0.12);
 }
 
 const log1p = Math.log1p;
+const normCache = new WeakMap<Adjacency, Float64Array>();
+function profileNorms(adj: Adjacency) {
+  let norms = normCache.get(adj);
+  if (!norms) {
+    norms = Float64Array.from(adj.map, (neighbors) => {
+      let square = 0;
+      for (const weight of neighbors.values()) square += log1p(weight) ** 2;
+      return Math.sqrt(square) || 1;
+    });
+    normCache.set(adj, norms);
+  }
+  return norms;
+}
 
 export function scorePair(
   graph: ScienceGraph,
@@ -66,12 +122,30 @@ export function scorePair(
 ): InferredPair | null {
   const ma = adj.map[a]!;
   const mc = adj.map[c]!;
-  if (ma.has(c) || ma.size < 2 || mc.size < 2) return null;
+  if (a === c || ma.has(c) || !ma.size || !mc.size) return null;
+  if (!bridgeInformation(graph, a) || !bridgeInformation(graph, c)) return null;
   const shared: number[] = [];
   const small = ma.size <= mc.size ? ma : mc;
   const other = small === ma ? mc : ma;
   for (const b of small.keys()) if (other.has(b)) shared.push(b);
-  if (shared.length < 3) return null;
+  if (!shared.length) return null;
+  const informative = shared
+    .map((b) => {
+      const specificity = bridgeInformation(graph, b);
+      const support = Math.min(ma.get(b)!, mc.get(b)!);
+      const association = Math.min(
+        ma.get(b)! / Math.max(1, graph.nodes[a]!.pubs),
+        mc.get(b)! / Math.max(1, graph.nodes[c]!.pubs),
+      );
+      return {
+        b,
+        specificity,
+        value: specificity * Math.sqrt(association) * (1 - Math.exp(-support / 2)),
+      };
+    })
+    .filter((bridge) => bridge.specificity > 0 && bridge.value > 0)
+    .sort((x, y) => y.value - x.value || x.b - y.b);
+  if (!informative.length) return null;
 
   let aa = 0;
   let ra = 0;
@@ -89,19 +163,20 @@ export function scorePair(
     if (m > bmax) bmax = m;
     dot += log1p(wa) * log1p(wc);
   }
-  let na2 = 0;
-  for (const w of ma.values()) na2 += log1p(w) ** 2;
-  let nc2 = 0;
-  for (const w of mc.values()) nc2 += log1p(w) ** 2;
-  const normA = Math.sqrt(na2) || 1;
-  const normC = Math.sqrt(nc2) || 1;
+  const norms = profileNorms(adj);
+  const normA = norms[a]!;
+  const normC = norms[c]!;
 
   const da = ma.size;
   const dc = mc.size;
-  const union = new Set([...ma.keys(), ...mc.keys()]).size || 1;
+  const union = ma.size + mc.size - shared.length || 1;
   const na = graph.nodes[a]!;
   const nc = graph.nodes[c]!;
-  if (na.growthAvailable === false || nc.growthAvailable === false) return null;
+  const biomedical = new Set(["A", "B", "C", "D", "E", "F", "G"]);
+  if (!biomedical.has(na.cat) || !biomedical.has(nc.cat)) return null;
+  // Swanson seeks complementary literatures, not two near-identical profiles.
+  const cosine = dot / (normA * normC);
+  if (cosine > 0.65) return null;
   const drugDisease =
     (na.cat === "D" || nc.cat === "D") &&
     (na.cat === "C" || nc.cat === "C" || na.cat === "F" || nc.cat === "F")
@@ -120,8 +195,14 @@ export function scorePair(
     Math.min(da, dc) / Math.max(da, dc),
     na.cat === nc.cat ? 1 : 0,
     treeDistance(na.tree || "", nc.tree || ""),
-    Math.min(na.growth, nc.growth),
-    Math.max(na.growth, nc.growth),
+    Math.min(
+      na.growthAvailable === false ? 0 : na.growth,
+      nc.growthAvailable === false ? 0 : nc.growth,
+    ),
+    Math.max(
+      na.growthAvailable === false ? 0 : na.growth,
+      nc.growthAvailable === false ? 0 : nc.growth,
+    ),
     drugDisease,
   ];
 
@@ -130,8 +211,28 @@ export function scorePair(
   for (let i = 0; i < f.length; i++) z += ((f[i]! - mean[i]!) / (std[i]! || 1)) * coef[i]!;
   const prob = 1 / (1 + Math.exp(-z));
 
-  shared.sort((x, y) => Math.min(ma.get(y)!, mc.get(y)!) - Math.min(ma.get(x)!, mc.get(x)!));
-  return { a, c, prob, bridges: shared.slice(0, 6), features: f };
+  const signal = informative
+    .slice(0, 3)
+    .reduce((sum, bridge, index) => sum + bridge.value / (index + 1), 0);
+  const distance = Math.min(
+    1,
+    treeDistance(na.tree || "", nc.tree || "") + (na.cat !== nc.cat ? 0.25 : 0),
+  );
+  const specificity = informative[0]!.specificity;
+  const separation = Math.max(0, 1 - cosine);
+  const priority = Math.min(
+    1,
+    (1 - Math.exp(-signal * 4)) * (0.45 + 0.55 * distance) * separation ** 3,
+  );
+  return {
+    a,
+    c,
+    prob,
+    priority,
+    bridgeSpecificity: specificity,
+    bridges: informative.slice(0, 6).map((bridge) => bridge.b),
+    features: f,
+  };
 }
 
 function mulberry32(seed: number) {
@@ -153,7 +254,8 @@ export interface DiscoveryOptions {
   allowed?: Set<number> | null;
 }
 
-/** Infere pares A–C sem co-ocorrência e ranqueia pela probabilidade do modelo. */
+/** Swanson A–B–C: rank by specific bridge evidence and complementary profiles.
+ * Priority is an exploratory heuristic, independent of logistic calibration. */
 export function discover(
   graph: ScienceGraph,
   adj: Adjacency,
@@ -169,7 +271,12 @@ export function discover(
       : (() => {
           const rnd = mulberry32(opts.randomSeed ?? 42);
           const order = Array.from({ length: n }, (_, i) => i)
-            .filter((i) => (!opts.allowed || opts.allowed.has(i)) && adj.map[i]!.size >= 4)
+            .filter(
+              (i) =>
+                (!opts.allowed || opts.allowed.has(i)) &&
+                adj.map[i]!.size >= 1 &&
+                bridgeInformation(graph, i) > 0,
+            )
             .sort((x, y) => adj.map[y]!.size - adj.map[x]!.size)
             .slice(0, Math.min(n, 4000));
           for (let i = order.length - 1; i > 0; i--) {
@@ -183,6 +290,7 @@ export function discover(
     const counts = new Map<number, number>();
     for (const b of adj.map[a]!.keys()) {
       if (opts.allowed && !opts.allowed.has(b)) continue;
+      if (!bridgeInformation(graph, b)) continue;
       for (const c of adj.map[b]!.keys()) {
         if (opts.allowed && !opts.allowed.has(c)) continue;
         if (c === a || adj.map[a]!.has(c)) continue;
@@ -190,7 +298,7 @@ export function discover(
       }
     }
     for (const [c, cn] of counts) {
-      if (cn < 3) continue;
+      if (cn < 1) continue;
       const key = a < c ? a * n + c : c * n + a;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -198,6 +306,9 @@ export function discover(
       if (scored) results.push(scored);
     }
   }
-  results.sort((x, y) => y.prob - x.prob);
+  results.sort(
+    (x, y) =>
+      y.priority - x.priority || y.bridgeSpecificity - x.bridgeSpecificity || y.prob - x.prob,
+  );
   return results.slice(0, opts.limit ?? 300);
 }

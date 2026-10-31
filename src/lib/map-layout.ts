@@ -42,7 +42,8 @@ export function computeMapLayout(graph: ScienceGraph): Float32Array {
     if (!groups.has(c)) groups.set(c, []);
     groups.get(c)!.push(i);
   }
-  // Seed community centres from the existing data layout, retaining global context.
+  // Community centres start from the published layout, but are softly clipped so
+  // a small disconnected component cannot stretch the complete map.
   for (const members of groups.values()) {
     let cx = 0,
       cy = 0;
@@ -52,17 +53,31 @@ export function computeMapLayout(graph: ScienceGraph): Float32Array {
     }
     cx /= members.length;
     cy /= members.length;
+    const centreRadius = Math.hypot(cx, cy);
+    if (centreRadius > 42) {
+      cx *= 42 / centreRadius;
+      cy *= 42 / centreRadius;
+    }
     members.forEach((i, k) => {
       const angle = k * 2.399963229728653;
       const radius = Math.sqrt(k + 1) * 1.5;
-      positions[i * 2] = cx * 3 + Math.cos(angle) * radius;
-      positions[i * 2 + 1] = cy * 3 + Math.sin(angle) * radius;
+      positions[i * 2] = cx * 1.35 + Math.cos(angle) * radius;
+      positions[i * 2 + 1] = cy * 1.35 + Math.sin(angle) * radius;
     });
   }
+  // Compact, overlapping category anchors reproduce the continuous "continent"
+  // structure of a science map without turning MeSH branches into distant islands.
+  const categories = [...new Set(graph.nodes.map((node) => node.cat))].sort();
+  const categoryIndex = new Map(categories.map((category, index) => [category, index]));
+  const anchors = categories.map((_, index) => {
+    const angle = index * 2.399963229728653;
+    const radius = Math.sqrt(index) * 7.5;
+    return [Math.cos(angle) * radius, Math.sin(angle) * radius] as const;
+  });
   const dx = new Float32Array(n),
     dy = new Float32Array(n);
-  const sample = Math.min(48, n);
-  for (let step = 0; step < 180; step++) {
+  const sample = Math.min(40, n);
+  for (let step = 0; step < 150; step++) {
     dx.fill(0);
     dy.fill(0);
     for (let i = 0; i < n; i++) {
@@ -74,7 +89,7 @@ export function computeMapLayout(graph: ScienceGraph): Float32Array {
         const ax = positions[j * 2]! - x,
           ay = positions[j * 2 + 1]! - y;
         const distance = Math.hypot(ax, ay) || 1;
-        const force = ((w / total) * 0.65 * Math.max(0, distance - 5)) / distance;
+        const force = ((w / total) * 0.72 * Math.max(0, distance - 4.5)) / distance;
         dx[i] = dx[i]! + ax * force;
         dy[i] = dy[i]! + ay * force;
         dx[j] = dx[j]! - ax * force;
@@ -85,19 +100,35 @@ export function computeMapLayout(graph: ScienceGraph): Float32Array {
         if (i === j) continue;
         const ax = x - positions[j * 2]!,
           ay = y - positions[j * 2 + 1]!;
-        const force = 1500 / sample / (ax * ax + ay * ay + 2);
+        const force = 760 / sample / (ax * ax + ay * ay + 3);
         dx[i] = dx[i]! + ax * force;
         dy[i] = dy[i]! + ay * force;
       }
-      dx[i] = dx[i]! - x * 0.002;
-      dy[i] = dy[i]! - y * 0.002;
+      const anchor = anchors[categoryIndex.get(graph.nodes[i]!.cat) ?? 0]!;
+      dx[i] = dx[i]! + (anchor[0] - x) * 0.014 - x * 0.004;
+      dy[i] = dy[i]! + (anchor[1] - y) * 0.014 - y * 0.004;
     }
-    const temperature = 4 * (1 - step / 180) + 0.08;
+    const temperature = 3.2 * (1 - step / 150) + 0.06;
     for (let i = 0; i < n; i++) {
       const scale = Math.min(1, temperature / (Math.hypot(dx[i]!, dy[i]!) || 1));
       positions[i * 2] = positions[i * 2]! + dx[i]! * scale;
       positions[i * 2 + 1] = positions[i * 2 + 1]! + dy[i]! * scale;
     }
+  }
+  // Final robust radial containment: preserves local angles and neighbourhoods,
+  // while folding the sparse tail back into the main body of the map.
+  const radii = Array.from({ length: n }, (_, i) =>
+    Math.hypot(positions[i * 2]!, positions[i * 2 + 1]!),
+  ).sort((a, b) => a - b);
+  const bodyRadius = Math.max(25, radii[Math.floor((radii.length - 1) * 0.96)] ?? 25);
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 2]!;
+    const y = positions[i * 2 + 1]!;
+    const radius = Math.hypot(x, y);
+    if (radius <= bodyRadius || !radius) continue;
+    const contained = bodyRadius + Math.log1p(radius - bodyRadius) * 3.2;
+    positions[i * 2] = (x / radius) * contained;
+    positions[i * 2 + 1] = (y / radius) * contained;
   }
   return positions;
 }

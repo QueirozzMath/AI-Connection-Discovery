@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ArticlesRouteImport } from './routes/articles'
 import { Route as HypothesesRouteImport } from './routes/hypotheses'
 import { Route as MetricsRouteImport } from './routes/metrics'
 import { Route as TimelineRouteImport } from './routes/timeline'
@@ -17,6 +18,11 @@ import { Route as TimelineRouteImport } from './routes/timeline'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArticlesRoute = ArticlesRouteImport.update({
+  id: '/articles',
+  path: '/articles',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HypothesesRoute = HypothesesRouteImport.update({
@@ -37,12 +43,14 @@ const TimelineRoute = TimelineRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/articles': typeof ArticlesRoute
   '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
   '/timeline': typeof TimelineRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/articles': typeof ArticlesRoute
   '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
   '/timeline': typeof TimelineRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/articles': typeof ArticlesRoute
   '/hypotheses': typeof HypothesesRoute
   '/metrics': typeof MetricsRoute
   '/timeline': typeof TimelineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/hypotheses' | '/metrics' | '/timeline'
+  fullPaths: '/' | '/articles' | '/hypotheses' | '/metrics' | '/timeline'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/hypotheses' | '/metrics' | '/timeline'
-  id: '__root__' | '/' | '/hypotheses' | '/metrics' | '/timeline'
+  to: '/' | '/articles' | '/hypotheses' | '/metrics' | '/timeline'
+  id: '__root__' | '/' | '/articles' | '/hypotheses' | '/metrics' | '/timeline'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArticlesRoute: typeof ArticlesRoute
   HypothesesRoute: typeof HypothesesRoute
   MetricsRoute: typeof MetricsRoute
   TimelineRoute: typeof TimelineRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/articles': {
+      id: '/articles'
+      path: '/articles'
+      fullPath: '/articles'
+      preLoaderRoute: typeof ArticlesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/hypotheses': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArticlesRoute: ArticlesRoute,
   HypothesesRoute: HypothesesRoute,
   MetricsRoute: MetricsRoute,
   TimelineRoute: TimelineRoute,

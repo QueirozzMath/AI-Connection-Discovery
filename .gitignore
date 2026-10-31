@@ -8,8 +8,6 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-.venv/
-.env
 dist
 dist-ssr
 .output
@@ -17,6 +15,7 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+pipeline/cache/desc*.xml.gz
 
 # Wrangler / Cloudflare
 .wrangler/
@@ -32,3 +31,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# API credentials
+.env
+.env.*
+!.env.example

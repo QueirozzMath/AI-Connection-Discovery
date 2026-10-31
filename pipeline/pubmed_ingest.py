@@ -57,11 +57,24 @@ def _get(path: str, params: dict, tries: int = 5) -> bytes:
     if API_KEY:
         params = {**params, "api_key": API_KEY}
     params = {**params, "tool": "meshmap", "email": "meshmap@example.org"}
-    url = f"{EUTILS}/{path}?{urllib.parse.urlencode(params)}"
+    encoded = urllib.parse.urlencode(params)
+    url = f"{EUTILS}/{path}?{encoded}"
     for attempt in range(tries):
         _throttle()
         try:
-            with urllib.request.urlopen(url, timeout=120) as resp:
+            # Long PMID lists exceed proxy and server URI limits. E-utilities
+            # accepts the same form fields by POST, which also enables larger,
+            # faster fetch batches while preserving rate limiting.
+            request = (
+                urllib.request.Request(
+                    f"{EUTILS}/{path}",
+                    data=encoded.encode("utf-8"),
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                if len(url) > 3000
+                else url
+            )
+            with urllib.request.urlopen(request, timeout=120) as resp:
                 return resp.read()
         except Exception as exc:  # noqa: BLE001
             if attempt == tries - 1:
