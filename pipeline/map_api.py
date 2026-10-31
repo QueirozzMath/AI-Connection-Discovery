@@ -11,49 +11,12 @@ import json
 import math
 import os
 from pathlib import Path
-import socket
 import sqlite3
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from collections import OrderedDict
 from map_store import connect
 
 DB = Path("pipeline/data/indexes/map.sqlite")
 QUERY_LOCK = threading.BoundedSemaphore(2)
-JOBS = OrderedDict()
-JOBS_LOCK = threading.Lock()
-EXECUTOR = ThreadPoolExecutor(max_workers=1)
-
-def execute_analysis(path, revision, start, end, validate, allowed_ids, seed_ids):
-    from temporal_model import analyze, train
-    result = analyze(path, revision, start, end, validate, allowed_ids, seed_ids)
-    with closing(connect(path)) as db:
-        if metadata(db)["revision"] != revision:
-            train.cache_clear()
-            return {"available": False, "items": [], "reason": "O corpus foi atualizado durante a análise. Atualize o catálogo e execute novamente."}
-    return result
-
-
-def analysis_job(path, revision, start, end, validate, allowed_ids=None, seed_ids=()):
-    from temporal_model import analyze
-    key = (str(path), revision, start, end, validate,allowed_ids,seed_ids)
-    with JOBS_LOCK:
-        if key not in JOBS:
-            if sum(not job.done() for job in JOBS.values()) >= 4:
-                return {"status": "busy", "reason": "Fila de análise ocupada. Tente novamente."}
-            while len(JOBS) >= 12:
-                completed = next((k for k,v in JOBS.items() if v.done()), None)
-                if completed is None: break
-                del JOBS[completed]
-            JOBS[key] = EXECUTOR.submit(execute_analysis, str(path), revision, start, end, validate,allowed_ids,seed_ids)
-        job = JOBS[key]
-    if not job.done(): return {"status": "pending"}
-    try:
-        return {"status": "complete", **job.result()}
-    except Exception as error:
-        print(f"Analysis failed: {type(error).__name__}: {error}", flush=True)
-        with JOBS_LOCK: JOBS.pop(key, None)
-        return {"status": "error", "reason": "Falha ao executar análise científica. Verifique o serviço e suas dependências."}
 
 
 def metadata(db):
@@ -64,7 +27,7 @@ def metadata(db):
 
 
 def period(data, catalog):
-    start, end = data.get("startYear", data.get("start")), data.get("endYear", data.get("end"))
+    start, end = data.get("start"), data.get("end")
     if type(start) is not int or type(end) is not int or not catalog["start"] <= start <= end <= catalog["end"]:
         raise ValueError("Period must be within the imported corpus")
     return start, end
@@ -91,8 +54,7 @@ def graph_query(path, revision, start, end):
         nodes = [{"id": r["id"], "label": r["label"], "cat": r["category"], "tree": r["tree"],
                   "x": r["x"], "y": r["y"], "z": 0, "hx": r["hx"], "hy": r["hy"],
                   "deg": 0, "pubs": r["pubs"], "growth": growth.get(r["id"], 0),
-                  "growthAvailable": end-9 >= first_year,
-                  "growthReason": None if end-9 >= first_year else "O corpus não cobre os dez anos necessários às duas janelas de cinco anos."} for r in rows]
+                  "growthAvailable": end-9 >= first_year} for r in rows]
         indices = {node["id"]: i for i, node in enumerate(nodes)}
         links = []
         for a, b, weight in edges:
@@ -102,9 +64,7 @@ def graph_query(path, revision, start, end):
             links.append([ai, bi, weight])
         articles = db.execute("SELECT COUNT(*) FROM articles WHERE year BETWEEN ? AND ?", (start, end)).fetchone()[0]
         total = db.execute("SELECT COUNT(DISTINCT mesh_id) FROM node_year WHERE year BETWEEN ? AND ?", (start, end)).fetchone()[0]
-        return {**template, "model": {"type": "logistic", "available": False,
-            "reason": "Execute a inferência para calibrar o modelo neste corte.", "mean": [], "std": [], "coef": [], "intercept": 0},
-            "nodes": nodes, "edges": links, "meta": {**template["meta"],
+        return {**template, "nodes": nodes, "edges": links, "meta": {**template["meta"],
             "corpus_max_year": db.execute("SELECT MAX(year) FROM articles").fetchone()[0],
             "cutoff_year": end, "n_nodes": len(nodes), "n_edges": len(links), "n_articles": articles,
             "period_start": start, "period_end": end, "total_concepts": total,
@@ -143,51 +103,6 @@ def article_query(path, revision, start, end, ids, cursor):
                 "next": f"{rows[19]['year']}:{rows[19]['pmid']}" if len(rows) > 20 else None}
 
 
-def evidence_query(db, data, start, end):
-    # Names from the client are resolved against stored descriptors. Never trust
-    # client-provided probabilities, bridges, PMIDs or publication years.
-    a, c = data.get("a"), data.get("c")
-    if not isinstance(a, str) or not isinstance(c, str) or max(len(a),len(c)) > 300:
-        raise ValueError("Invalid concepts")
-    ids = []
-    for value in (a,c):
-        row = db.execute("SELECT id,label FROM mesh WHERE id=? OR LOWER(label)=LOWER(?) ORDER BY id LIMIT 1", (value,value)).fetchone()
-        if not row: return {"a": [], "c": [], "together": [], "bridges": []}
-        ids.append(row[0])
-    allowed = data.get("meshIds")
-    if allowed is not None:
-        if not isinstance(allowed, list) or len(allowed) > 4500 or any(not isinstance(i,str) for i in allowed):
-            raise ValueError("Invalid allowed concepts")
-        if any(mid not in allowed for mid in ids):
-            raise ValueError("Concept outside selected universe")
-    def articles(mid):
-        return [dict(r) for r in db.execute("""SELECT a.pmid,a.year,a.title FROM articles a
-          JOIN article_mesh am ON am.pmid=a.pmid WHERE am.mesh_id=? AND a.year BETWEEN ? AND ?
-          ORDER BY a.year DESC,a.pmid DESC LIMIT 12""", (mid,start,end))]
-    together = [dict(r) for r in db.execute("""SELECT a.pmid,a.year,a.title FROM articles a
-      JOIN article_mesh x ON x.pmid=a.pmid JOIN article_mesh y ON y.pmid=a.pmid
-      WHERE x.mesh_id=? AND y.mesh_id=? AND a.year BETWEEN ? AND ? ORDER BY a.year,a.pmid LIMIT 20""", (*ids,start,end))]
-    neighbours = []
-    for mid in ids:
-        neighbours.append({r[0] for r in db.execute("""SELECT CASE WHEN mesh_a=? THEN mesh_b ELSE mesh_a END FROM pair_year
-            WHERE (mesh_a=? OR mesh_b=?) AND year BETWEEN ? AND ?""", (mid,mid,mid,start,end))})
-    common = neighbours[0]&neighbours[1]
-    if allowed is not None: common &= set(allowed)
-    bridges = [db.execute("SELECT label FROM mesh WHERE id=?",(mid,)).fetchone()[0] for mid in sorted(common)[:6]]
-    return {"a": articles(ids[0]), "c": articles(ids[1]), "together": together, "bridges": bridges}
-
-
-class MapHTTPServer(ThreadingHTTPServer):
-    """Reject a second API process on the same address, including on Windows."""
-
-    allow_reuse_address = False
-
-    def server_bind(self):
-        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
-
-
 class Handler(BaseHTTPRequestHandler):
     def respond(self, code, payload):
         body = json.dumps(payload, ensure_ascii=False).encode()
@@ -217,20 +132,9 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(503, {"error": "Import the corpus before starting queries"})
 
     def do_POST(self):
-        if self.path == "/ingestion-jobs":
-            import hmac
-            token = os.getenv("INGESTION_API_TOKEN", "")
-            if not os.getenv("ENABLE_INGESTION") == "1" or not token or not hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + token):
-                return self.respond(403, {"error": "Ingestion endpoint disabled or unauthorized"})
-            try:
-                length=int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 1000: raise ValueError("Invalid payload")
-                from ingestion_jobs import enqueue
-                return self.respond(202, enqueue(DB, json.loads(self.rfile.read(length))["id"]))
-            except (ValueError,KeyError): return self.respond(400, {"error":"Invalid job"})
         if not self.authorized():
             return
-        if self.path not in ("/graph", "/articles", "/analysis", "/evidence"):
+        if self.path not in ("/graph", "/articles"):
             return self.respond(404, {"error": "Not found"})
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -240,17 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             with QUERY_LOCK, closing(connect(DB)) as db:
                 catalog = metadata(db)
                 start, end = period(data, catalog)
-                if self.path == "/analysis":
-                    ids=data.get("meshIds")
-                    seeds=data.get("seedIds",[])
-                    for value in [ids,seeds]:
-                        if value is not None and (not isinstance(value,list) or len(value)>4500 or any(not isinstance(i,str) or len(i)>24 for i in value)):
-                            raise ValueError("Invalid concepts")
-                    result = analysis_job(DB, catalog["revision"], start, end, data.get("operation") == "validate",
-                        tuple(sorted(set(ids))) if ids is not None else None,tuple(sorted(set(seeds))))
-                elif self.path == "/evidence":
-                    result = evidence_query(db, data, start, end)
-                elif self.path == "/graph":
+                if self.path == "/graph":
                     result = graph_query(str(DB), catalog["revision"], start, end)
                 else:
                     ids = data.get("meshIds", [])
@@ -265,27 +159,20 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(400, {"error": "Invalid query"})
         except sqlite3.Error:
             self.respond(503, {"error": "Database unavailable"})
-        except Exception:
-            self.respond(503, {"error": "Scientific service unavailable"})
 
 
 def main():
     global DB
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", default=os.getenv("DATABASE_URL", str(DB)))
+    parser.add_argument("--db", type=Path, default=DB)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8090)
     args = parser.parse_args()
-    DB = args.db if args.db.startswith(("postgres://", "postgresql://")) else Path(args.db).resolve()
-    if isinstance(DB, Path) and not DB.is_file() and os.getenv("ENABLE_INGESTION") != "1":
+    DB = args.db.resolve()
+    if not DB.is_file():
         parser.error("Database missing: run map_store.py first")
-    if os.getenv("ENABLE_INGESTION") == "1":
-        if isinstance(DB, Path): DB.parent.mkdir(parents=True, exist_ok=True)
-        from ingestion_jobs import start_worker
-        start_worker(DB, Path(os.getenv("PUBMED_ROOT", "pipeline/data")))
-    server = MapHTTPServer((args.host, args.port), Handler)
     print(f"Map API: http://{args.host}:{args.port}", flush=True)
-    server.serve_forever()
+    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
 
 
 if __name__ == "__main__":

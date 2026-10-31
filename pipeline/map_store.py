@@ -14,8 +14,6 @@ import math
 import re
 from pathlib import Path
 import sqlite3
-import os
-from sql_backend import connect_database
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -49,14 +47,6 @@ CREATE TABLE IF NOT EXISTS imports (
  source TEXT PRIMARY KEY, checksum TEXT NOT NULL, line INTEGER NOT NULL, complete INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS ingestion_files (
- filename TEXT PRIMARY KEY, kind TEXT NOT NULL, cycle INTEGER NOT NULL,
- url TEXT NOT NULL, checksum TEXT, size BIGINT, downloaded_at TEXT,
- processed_at TEXT, incorporated_at TEXT, status TEXT NOT NULL,
- records BIGINT NOT NULL DEFAULT 0, inserts BIGINT NOT NULL DEFAULT 0,
- updates BIGINT NOT NULL DEFAULT 0, deletes BIGINT NOT NULL DEFAULT 0,
- checkpoint BIGINT NOT NULL DEFAULT 0, error TEXT
-);
 """
 
 
@@ -69,7 +59,10 @@ def digest(path):
 
 
 def connect(path):
-    return connect_database(path)
+    db = sqlite3.connect(path, timeout=60)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
+    return db
 
 
 def adjust(db, pmid, delta, nodes, pairs):
@@ -115,15 +108,14 @@ def apply_event(db, record, trees, positions, node_delta, pair_delta):
         hx, hy = (base["hx"], base["hy"]) if base else (x, y)
         db.execute("""INSERT INTO mesh VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
           label=excluded.label,category=excluded.category,tree=excluded.tree""", (mid, label, category, tree, x, y, hx, hy))
-        db.execute("INSERT INTO article_mesh VALUES(?,?,?) ON CONFLICT(pmid,mesh_id) DO UPDATE SET major=excluded.major", (pmid, mid, int(major)))
+        db.execute("INSERT OR REPLACE INTO article_mesh VALUES(?,?,?)", (pmid, mid, int(major)))
     adjust(db, pmid, 1, node_delta, pair_delta)
 
 
-def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
-    if not str(db_path).startswith(("postgresql://", "postgres://")):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+def import_file(db_path, path, trees, template, batch=500):
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     checksum = digest(path)
-    source = "pubmed:" + ingestion_key if ingestion_key else str(path.resolve())
+    source = str(path.resolve())
     positions = {n["id"]: n for n in template["nodes"]}
     with closing(connect(db_path)) as db:
         db.executescript(SCHEMA)
@@ -138,8 +130,8 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
         if sequence and last and sequence < json.loads(last[0]):
             raise ValueError("Out-of-order PubMed update: import baseline then daily files numerically")
         start = previous["line"] if previous else 0
-        db.execute("INSERT INTO metadata VALUES('template',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps({k: v for k, v in template.items() if k not in ("nodes", "edges")}),))
-        db.execute("INSERT INTO metadata VALUES('source',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(template["meta"]["source"]),))
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('template',?)", (json.dumps({k: v for k, v in template.items() if k not in ("nodes", "edges")}),))
+        db.execute("INSERT OR REPLACE INTO metadata VALUES('source',?)", (json.dumps(template["meta"]["source"]),))
         db.commit()
         opener = gzip.open if path.suffix == ".gz" else open
         count = start
@@ -147,29 +139,21 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
             chunk = []
             def commit_chunk(complete):
                 nodes, pairs = Counter(), Counter()
-                inserts = updates = deletes = 0
                 with db:
                     for record in chunk:
-                        exists = db.execute("SELECT pmid FROM articles WHERE pmid=?", (str(record["pmid"]),)).fetchone() is not None
-                        if record.get("op") == "delete": deletes += int(exists)
-                        elif exists: updates += 1
-                        else: inserts += 1
                         apply_event(db, record, trees, positions, nodes, pairs)
                     db.executemany("""INSERT INTO node_year VALUES(?,?,?) ON CONFLICT(year,mesh_id)
-                      DO UPDATE SET count=node_year.count+excluded.count""", ((*key, value) for key, value in nodes.items() if value))
+                      DO UPDATE SET count=count+excluded.count""", ((*key, value) for key, value in nodes.items() if value))
                     db.executemany("""INSERT INTO pair_year VALUES(?,?,?,?) ON CONFLICT(year,mesh_a,mesh_b)
-                      DO UPDATE SET weight=pair_year.weight+excluded.weight""", ((*key, value) for key, value in pairs.items() if value))
+                      DO UPDATE SET weight=weight+excluded.weight""", ((*key, value) for key, value in pairs.items() if value))
                     db.executemany("DELETE FROM node_year WHERE year=? AND mesh_id=? AND count<=0",
                                    (key for key, delta in nodes.items() if delta < 0))
                     db.executemany("DELETE FROM pair_year WHERE year=? AND mesh_a=? AND mesh_b=? AND weight<=0",
                                    (key for key, delta in pairs.items() if delta < 0))
-                    db.execute("INSERT INTO imports VALUES(?,?,?,?) ON CONFLICT(source) DO UPDATE SET checksum=excluded.checksum,line=excluded.line,complete=excluded.complete", (source, checksum, count, int(complete)))
-                    db.execute("INSERT INTO metadata VALUES('revision',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(checksum + ':' + str(count)),))
-                    if ingestion_key:
-                        db.execute("""UPDATE ingestion_files SET records=?,checkpoint=?,inserts=inserts+?,updates=updates+?,deletes=deletes+?,status=? WHERE filename=?""",
-                          (count,count,inserts,updates,deletes,"incorporated" if complete else "processing",ingestion_key))
+                    db.execute("INSERT OR REPLACE INTO imports VALUES(?,?,?,?)", (source, checksum, count, int(complete)))
+                    db.execute("INSERT OR REPLACE INTO metadata VALUES('revision',?)", (json.dumps(checksum + ':' + str(count)),))
                     if sequence:
-                        db.execute("INSERT INTO metadata VALUES('last_pubmed_sequence',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(sequence),))
+                        db.execute("INSERT OR REPLACE INTO metadata VALUES('last_pubmed_sequence',?)", (json.dumps(sequence),))
                 chunk.clear()
             for line_number, line in enumerate(stream, 1):
                 if line_number <= start:
@@ -188,7 +172,7 @@ def import_file(db_path, path, trees, template, batch=500, ingestion_key=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, action="append", required=True)
-    parser.add_argument("--db", default=os.getenv("DATABASE_URL", "pipeline/data/indexes/map.sqlite"))
+    parser.add_argument("--db", type=Path, default=Path("pipeline/data/indexes/map.sqlite"))
     parser.add_argument("--trees", type=Path, default=Path("pipeline/cache/mesh_trees.json"))
     parser.add_argument("--template", type=Path, default=Path("public/data/graph-2018.json"))
     args = parser.parse_args()

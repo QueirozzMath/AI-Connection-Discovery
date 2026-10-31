@@ -31,7 +31,10 @@ export async function esearch(term: string, retmax = 20): Promise<string[]> {
 function tagText(xml: string, tag: string): string {
   const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
   if (!m) return "";
-  return m[1]!.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return m[1]!
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export async function efetch(pmids: string[]): Promise<PubmedArticle[]> {
@@ -61,6 +64,13 @@ export async function conceptArticles(term: string, cutoffYear: number, n = 8) {
   const q = `"${term}"[MeSH Terms] AND ("1800"[dp] : "${cutoffYear}"[dp])`;
   const ids = await esearch(q, n);
   return efetch(ids);
+}
+
+/** Evidence for one arm of Swanson's chain, restricted to the cutoff. */
+export async function bridgeArticles(a: string, b: string, cutoffYear: number, n = 4) {
+  const quote = (term: string) => term.replace(/["\\]/g, " ");
+  const query = `"${quote(a)}"[MeSH Terms] AND "${quote(b)}"[MeSH Terms] AND ("1800"[dp] : "${cutoffYear}"[dp])`;
+  return efetch(await esearch(query, n));
 }
 
 /** Artigos que citam A e C juntos apos o corte (evidencia de confirmacao). */

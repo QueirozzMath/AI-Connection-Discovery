@@ -1,12 +1,12 @@
-import { useTemporalAnalysis } from "@/hooks/use-temporal-analysis";
-import type { Metrics } from "@/lib/science-data";
 import { createFileRoute } from "@tanstack/react-router";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Line,
   LineChart,
   ReferenceLine,
@@ -16,19 +16,37 @@ import {
   YAxis,
 } from "recharts";
 
-import { num, pct } from "@/lib/science-data";
+import {
+  indexQuery,
+  metricsQuery,
+  num,
+  pct,
+  timelineQuery,
+  type TimelinePoint,
+} from "@/lib/science-data";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/metrics")({
   head: () => ({
     meta: [
-      { title: "Validação estatística do modelo — MeSHMap" },
+      { title: "Validação estatística do modelo — AI Connection Discovery" },
       {
         name: "description",
         content:
           "AUC com IC bootstrap, teste de permutação, precision@k, calibração, lead time e comparação com baselines estruturais.",
       },
-      { property: "og:title", content: "Validação estatística do modelo — MeSHMap" },
+      {
+        property: "og:title",
+        content: "Validação estatística do modelo — AI Connection Discovery",
+      },
       {
         property: "og:description",
         content:
@@ -47,40 +65,33 @@ export const Route = createFileRoute("/metrics")({
 });
 
 function MetricsGate() {
-  const [requested, setRequested] = useState(false);
-  const query = useTemporalAnalysis("validate", requested);
-  if (!requested)
-    return (
-      <div className="p-8">
-        <button
-          className="rounded bg-primary p-3 text-primary-foreground"
-          onClick={() => setRequested(true)}
-        >
-          Validar com o corte do período selecionado
-        </button>
-      </div>
-    );
-  if (query.isError)
-    return (
-      <div role="alert" className="p-8">
-        Não foi possível executar a validação.
-      </div>
-    );
-  if (!query.data || query.data.status === "pending" || query.data.status === "busy")
-    return (
-      <div role="status" className="p-8">
-        Treinando e avaliando o modelo em segundo plano?
-      </div>
-    );
-  if (!query.data.metrics)
-    return (
-      <div role="status" className="p-8">
-        {query.data.reason ?? "Dados insuficientes para validação temporal neste corte."}
-      </div>
-    );
-  return <MetricsPage m={query.data.metrics} />;
+  const { data: idx } = useSuspenseQuery(indexQuery);
+  const { data: timeline } = useSuspenseQuery(timelineQuery);
+  const [cutoff, setCutoff] = useState(idx.default_cutoff);
+  return (
+    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
+      <MetricsPage
+        cutoff={cutoff}
+        cutoffs={idx.cutoffs}
+        onCutoff={setCutoff}
+        timeline={timeline.items}
+      />
+    </Suspense>
+  );
 }
-function MetricsPage({ m }: { m: Metrics }) {
+
+function MetricsPage({
+  cutoff,
+  cutoffs,
+  onCutoff,
+  timeline,
+}: {
+  cutoff: number;
+  cutoffs: number[];
+  onCutoff: (v: number) => void;
+  timeline: TimelinePoint[];
+}) {
+  const { data: m } = useSuspenseQuery(metricsQuery(cutoff));
   const axis = { stroke: "oklch(0.7 0.024 246)", fontSize: 11 };
   const tooltip = {
     contentStyle: {
@@ -92,27 +103,59 @@ function MetricsPage({ m }: { m: Metrics }) {
   } as const;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <header>
-        <h1 className="font-display text-2xl font-semibold">Validação do modelo</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Treino em literatura até {m.cutoff_year}; avaliação contra conexões que realmente
-          apareceram entre {m.cutoff_year + 1} e {m.window[1]}. {num(m.n_articles)} artigos,{" "}
-          {num(m.graph.nodes)} conceitos MeSH.
-        </p>
+    <div data-tour="validation" className="mx-auto max-w-6xl space-y-6 p-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-4xl">
+          <h1 className="font-display text-2xl font-semibold">Validação do modelo</h1>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Estas métricas avaliam o modelo estrutural e seu ranking histórico. O novo ranking por
+            pontes raras de Swanson é exploratório e ainda não possui validação independente; seus
+            escores não herdam a AUC nem a calibração exibidas aqui.
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {m.dynamic ? "Reconstrução preparada" : "Treino"} em literatura até {m.cutoff_year};{" "}
+            {m.cutoff_year < m.window[1]
+              ? `avaliação contra conexões que realmente apareceram entre ${m.window[0]} e ${m.window[1]}`
+              : "este é o último ano do corpus, sem período posterior para confirmação"}
+            . {num(m.n_articles)} artigos, {num(m.graph.nodes)} conceitos MeSH.
+          </p>
+        </div>
+        <div className="min-w-40">
+          <Label className="mb-1 block text-xs text-muted-foreground">Ano de corte</Label>
+          <Select value={String(cutoff)} onValueChange={(value) => onCutoff(Number(value))}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {cutoffs.map((year) => (
+                <SelectItem key={year} value={String(year)}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card
           label="AUC (teste)"
           value={m.model.auc.toFixed(3)}
-          sub={`IC95% ${m.model.auc_ci95[0].toFixed(3)}–${m.model.auc_ci95[1].toFixed(3)}`}
+          sub={`${m.dynamic ? "faixa indicativa" : "IC95%"} ${m.model.auc_ci95[0].toFixed(3)}–${m.model.auc_ci95[1].toFixed(3)}`}
         />
-        <Card
-          label="Teste de permutação"
-          value={`p = ${m.model.permutation_p < 0.001 ? "<0,001" : m.model.permutation_p.toFixed(3)}`}
-          sub="melhor que o acaso"
-        />
+        {m.dynamic ? (
+          <Card
+            label="Corte recalculado"
+            value="sob demanda"
+            sub="grafo e ranking derivados do corpus"
+          />
+        ) : (
+          <Card
+            label="Teste de permutação"
+            value={`p = ${m.model.permutation_p < 0.001 ? "<0,001" : m.model.permutation_p.toFixed(3)}`}
+            sub="melhor que o acaso"
+          />
+        )}
         <Card
           label="Conexões confirmadas"
           value={`${num(m.confirmations.n_confirmed)}/${num(m.confirmations.n_predicted)}`}
@@ -233,7 +276,7 @@ function MetricsPage({ m }: { m: Metrics }) {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <Item k="Conceitos (nós)" v={num(m.graph.nodes)} />
             <Item k="Arestas pré-corte" v={num(m.graph.edges_pre)} />
-            <Item k="Pares de teste que surgiram após o corte" v={num(m.graph.edges_post_new)} />
+            <Item k="Novas arestas pós-corte" v={num(m.graph.edges_post_new)} />
             <Item k="Densidade" v={m.graph.density.toExponential(2)} />
             <Item k="Pares avaliados" v={num(m.labels.n)} />
             <Item k="Taxa base de positivos" v={pct(m.labels.rate)} />
@@ -254,6 +297,96 @@ function MetricsPage({ m }: { m: Metrics }) {
           )}
         </Panel>
       </div>
+
+      <section className="space-y-4 border-t border-border pt-6">
+        <div>
+          <h2 className="font-display text-xl font-semibold">Comparativo por ano de corte</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Os recortes estatísticos publicados foram reunidos aqui para comparar desempenho,
+            confirmações e antecipação sem sair da Validação.
+          </p>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Panel
+            title="Desempenho ao longo do tempo"
+            desc="AUC e precision@50 nos recortes validados."
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={timeline}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.03 253)" />
+                <XAxis dataKey="cutoff_year" {...axis} />
+                <YAxis domain={[0, 1]} {...axis} />
+                <Tooltip {...tooltip} />
+                <Line dataKey="auc" name="AUC" stroke="var(--color-primary)" strokeWidth={2} dot />
+                <Line
+                  dataKey="precision_at_50"
+                  name="Precision@50"
+                  stroke="var(--color-accent)"
+                  strokeWidth={2}
+                  dot
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Panel>
+          <Panel
+            title="Confirmações após cada corte"
+            desc="Quantidade prevista e confirmada na literatura posterior."
+          >
+            <ResponsiveContainer width="100%" height={260}>
+              <ComposedChart data={timeline}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.3 0.03 253)" />
+                <XAxis dataKey="cutoff_year" {...axis} />
+                <YAxis {...axis} />
+                <Tooltip {...tooltip} />
+                <Bar
+                  dataKey="n_predicted"
+                  name="Previstas"
+                  fill="var(--color-muted-foreground)"
+                  radius={4}
+                />
+                <Bar
+                  dataKey="n_confirmed"
+                  name="Confirmadas"
+                  fill="var(--color-primary)"
+                  radius={4}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </Panel>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[700px] text-sm">
+            <thead className="bg-secondary/60 text-left text-xs text-muted-foreground">
+              <tr>
+                <th className="p-3">Corte</th>
+                <th className="p-3">AUC</th>
+                <th className="p-3">Precision@50</th>
+                <th className="p-3">Confirmadas</th>
+                <th className="p-3">Taxa</th>
+                <th className="p-3">Lead time mediano</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {timeline.map((item) => (
+                <tr key={item.cutoff_year}>
+                  <td className="p-3 font-mono text-primary">{item.cutoff_year}</td>
+                  <td className="p-3">{item.auc.toFixed(3)}</td>
+                  <td className="p-3">
+                    {item.precision_at_50 == null ? "—" : pct(item.precision_at_50)}
+                  </td>
+                  <td className="p-3">
+                    {num(item.n_confirmed)}/{num(item.n_predicted)}
+                  </td>
+                  <td className="p-3">{pct(item.rate)}</td>
+                  <td className="p-3">
+                    {item.median_lead_time == null ? "—" : `${item.median_lead_time} anos`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
