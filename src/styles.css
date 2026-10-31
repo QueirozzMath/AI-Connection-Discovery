@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * MeSHMap — design system.
+ * AI Connection Discovery — design system.
  * Tema "deep space lab": fundo azul-petroleo muito escuro, tipografia
  * geometrica (Space Grotesk) para titulos e IBM Plex Sans para corpo,
  * acentos ciano (sinal) e ambar (descoberta confirmada).
@@ -64,11 +64,56 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --shadow-glow: 0 0 0 1px oklch(0.78 0.14 195 / 0.25), 0 12px 40px -12px oklch(0.78 0.14 195 / 0.35);
+  --shadow-glow:
+    0 0 0 1px oklch(0.78 0.14 195 / 0.25), 0 12px 40px -12px oklch(0.78 0.14 195 / 0.35);
   --shadow-panel: 0 24px 60px -24px oklch(0.05 0.03 250 / 0.9);
 }
 
 :root {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: #f5f8fc;
+  --foreground: #172b42;
+  --surface: #ffffff;
+  --surface-2: #edf3f9;
+  --card: #ffffff;
+  --card-foreground: #172b42;
+  --popover: #ffffff;
+  --popover-foreground: #172b42;
+  --primary: #086879;
+  --primary-foreground: #ffffff;
+  --secondary: #e7eef6;
+  --secondary-foreground: #243c54;
+  --muted: #edf2f7;
+  --muted-foreground: #53677c;
+  --accent: #925800;
+  --accent-foreground: #ffffff;
+  --destructive: #bb3545;
+  --destructive-foreground: #ffffff;
+  --success: #137548;
+  --success-foreground: #ffffff;
+  --warning: #946000;
+  --warning-foreground: #ffffff;
+  --border: #ced9e5;
+  --input: #bdcbd9;
+  --ring: #08768a;
+  --chart-1: #08768a;
+  --chart-2: #a56808;
+  --chart-3: #974ba3;
+  --chart-4: #218354;
+  --chart-5: #526ec6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #172b42;
+  --sidebar-primary: #086879;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e7eef6;
+  --sidebar-accent-foreground: #172b42;
+  --sidebar-border: #ced9e5;
+  --sidebar-ring: #08768a;
+  --shadow-panel: 0 12px 36px -20px #243c5430;
+}
+
+.dark {
   --radius: 0.5rem;
   --background: oklch(0.16 0.026 250);
   --foreground: oklch(0.95 0.008 240);
@@ -120,7 +165,7 @@
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
@@ -156,4 +201,19 @@
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.tour-focus {
+  outline: 3px solid var(--color-primary) !important;
+  outline-offset: 5px;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  scroll-margin: 30px;
+}
+
+.recharts-cartesian-axis-tick-value {
+  fill: var(--muted-foreground);
+}
+
+.recharts-cartesian-grid line {
+  stroke: var(--border);
 }

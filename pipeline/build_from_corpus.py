@@ -87,6 +87,15 @@ def load_corpus(path: Path) -> list[dict]:
 
 def fetch_tree_numbers(uis: list[str]) -> dict[str, list[str]]:
     """Busca tree numbers dos descriptors MeSH via E-utilities (com cache local)."""
+    vocabulary_path = OUT / "mesh-vocabulary.json.gz"
+    if vocabulary_path.exists():
+        with gzip.open(vocabulary_path, "rt", encoding="utf-8") as stream:
+            vocabulary = json.load(stream)
+        wanted = set(uis)
+        local = {row[0]: row[2] for row in vocabulary["descriptors"] if row[0] in wanted}
+        print(f"tree numbers: {len(local)} carregados do MeSH {vocabulary['version']} local")
+        if len(local) >= len(wanted) * 0.98:
+            return local
     cache_path = CACHE / "mesh_trees.json"
     cache: dict[str, list[str]] = {}
     if cache_path.exists():
@@ -200,6 +209,12 @@ def spectral_layout(nodes: list[str], adj, dims: int = 3, seed: int = 7):
         step = np.minimum(norm, 8.0 * temp + 0.5)
         pos += disp / norm * step
         pos -= pos.mean(axis=0)
+    radii = np.linalg.norm(pos, axis=1)
+    body = np.percentile(radii, 96) or 1.0
+    tail = radii > body
+    if np.any(tail):
+        contained = body + np.log1p(radii[tail] - body) * 3.2
+        pos[tail] *= (contained / radii[tail])[:, None]
     scale = np.percentile(np.abs(pos), 98) or 1.0
     return pos / scale * 100
 
@@ -228,12 +243,12 @@ def hierarchy_layout(nodes: list[str], trees: dict[str, list[str]]):
 
 
 # --------------------------------------------------------------- features / ABC
-def candidate_pairs(adj, nodes: list[str], rng: random.Random, max_pairs: int, min_cn: int = 3, anchors=None):
+def candidate_pairs(adj, nodes: list[str], rng: random.Random, max_pairs: int, min_cn: int = 3):
     """Pares A-C sem co-ocorrencia direta, com pelo menos min_cn pontes B."""
     nodeset = set(nodes)
     seen: set[tuple[str, str]] = set()
     out: list[tuple[str, str]] = []
-    order = list(nodes if anchors is None else anchors)
+    order = list(nodes)
     rng.shuffle(order)
     for a in order:
         nb_a = adj.get(a, {})
@@ -436,8 +451,7 @@ def run_cutoff(cutoff, recs, corpus_max_year, node_year, label, pair_first, pair
 
     adj_now = adjacency(pair_w, cutoff, keep, min_w=args.min_edge)
     train_cut = cutoff - args.gap
-    keep_train = {u for u, years in node_year.items() if sum(n for y,n in years.items() if y <= train_cut) >= args.min_pubs}
-    adj_train = adjacency(pair_w, train_cut, keep_train, min_w=args.min_edge)
+    adj_train = adjacency(pair_w, train_cut, keep, min_w=args.min_edge)
 
     branch = {u: ((trees.get(u) or ["Z"])[0][0]) for u in keep}
     growth: dict[str, float] = {}
@@ -453,9 +467,7 @@ def run_cutoff(cutoff, recs, corpus_max_year, node_year, label, pair_first, pair
     nodes_train = sorted(adj_train.keys(), key=lambda u: -len(adj_train[u]))
 
     pairs_tr = candidate_pairs(adj_train, nodes_train, rng, args.max_pairs, args.min_cn)
-    growth_train = {u: float(np.clip(math.log((sum(n for y,n in node_year[u].items() if train_cut-4 <= y <= train_cut)+1)
-        / (sum(n for y,n in node_year[u].items() if train_cut-9 <= y <= train_cut-5)+1)), -2,2)) for u in keep_train}
-    X_tr, _ = pair_features(pairs_tr, adj_train, {**meta, "growth": growth_train})
+    X_tr, _ = pair_features(pairs_tr, adj_train, meta)
     y_tr = labels_for(pairs_tr, pair_first, train_cut, cutoff)
 
     pairs_te = candidate_pairs(adj_now, nodes_now, rng, args.max_pairs, args.min_cn)

@@ -52,21 +52,28 @@ function mount(name, props) {
     },
   };
   const arcs = [],
-    labels = [];
+    labels = [],
+    lines = [],
+    strokes = [];
+  const styles = {};
   const ctx = new Proxy(
     {},
     {
       get: (_, key) => {
         if (key === "arc") return (...args) => arcs.push(args);
         if (key === "fillText") return (text) => labels.push(text);
+        if (key === "lineTo") return (...args) => lines.push(args);
+        if (key === "stroke") return () => strokes.push({ color: styles.strokeStyle, alpha: styles.globalAlpha });
         if (key === "clearRect")
           return () => {
             arcs.length = 0;
             labels.length = 0;
+            lines.length = 0;
+            strokes.length = 0;
           };
         return () => {};
       },
-      set: () => true,
+      set: (_, key, value) => { styles[key] = value; return true; },
     },
   );
   const canvas = { width: 0, height: 0, getContext: () => ctx };
@@ -90,7 +97,7 @@ function mount(name, props) {
       id === "react"
         ? react
         : id === "@/lib/science-data"
-          ? { catColor: () => "#ffffff" }
+          ? { catColor: (category) => category === "C" ? "#ff0000" : category === "D" ? "#00ff00" : "#ffffff" }
           : id === "@/lib/map-navigation"
             ? require("../src/lib/map-navigation.ts")
             : id === "@/lib/map-layers"
@@ -132,6 +139,8 @@ function mount(name, props) {
     },
     arcs,
     labels,
+    lines,
+    strokes,
     state,
     selected: () => selected,
     update: (props) => {
@@ -235,4 +244,35 @@ test("3D pan translates projected nodes without changing semantic layers", () =>
   map.element.props.onPointerMove({ ...event, clientX: 340, clientY: 230 });
   assert.ok(Math.abs(map.arcs[0][0] - x - 40) < 0.001);
   assert.ok(Math.abs(map.arcs[0][1] - y - 30) < 0.001);
+});
+
+for (const layout of ["force", "hierarchy"]) {
+  test(`2D ${layout}: selection reveals all direct edges even with background edges off`, () => {
+    // Edges at the end of a large array must not be lost to the background draw limit.
+    const selected = 0;
+    const edges = graph.edges.filter(([a, b]) => a === selected || b === selected);
+    const allowed = new Set([selected, ...edges.flatMap(([a, b]) => [a, b]).slice(0, 16)]);
+    const expected = graph.edges.filter(([a, b]) => allowed.has(a) && allowed.has(b) && (a === selected || b === selected));
+    const map = mount("ScienceMap", { layout, matches: allowed, selected, showEdges: false, showUnselected: false });
+    assert.equal(map.lines.length, expected.length);
+    assert.ok(map.lines.length > 0);
+    map.update({ selected: null });
+    assert.equal(map.lines.length, 0);
+    map.update({ selected, matches: new Set(), showUnselected: false });
+    assert.equal(map.lines.length, 0);
+  });
+}
+
+test("3D selection colors each direct connection by the neighbor's category", () => {
+  const selected = 0;
+  const map = mount("ScienceMap3D", { selected, showEdges: false });
+  const focused = map.strokes.filter((s) => s.alpha === 0.7);
+  const edges = graph.edges.filter(([a, b]) => a === selected || b === selected);
+  assert.equal(focused.length, edges.length);
+  const expected = new Set(edges.map(([a, b]) => graph.nodes[a === selected ? b : a].cat));
+  assert.ok(expected.has("C") && expected.has("D"));
+  assert.ok(focused.some((s) => s.color === "#ff0000"));
+  assert.ok(focused.some((s) => s.color === "#00ff00"));
+  map.update({ selected: null });
+  assert.equal(map.strokes.filter((s) => s.alpha === 0.7).length, 0);
 });

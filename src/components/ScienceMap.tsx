@@ -17,6 +17,7 @@ export interface MapHighlight {
 import { exportMapCanvas, type MapCommand, type MapTool } from "@/lib/map-navigation";
 
 interface Props {
+  theme?: "light" | "dark";
   command?: MapCommand;
   tool?: MapTool;
   onHover?: (node: number | null) => void;
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export function ScienceMap({
+  theme = "dark",
   command,
   tool = "navigate",
   onHover,
@@ -77,6 +79,12 @@ export function ScienceMap({
       matches ? graph.edges.filter(([a, b]) => matches.has(a) && matches.has(b)) : graph.edges,
     [graph, matches],
   );
+  const focusEdges = useMemo(
+    () =>
+      selected == null ? [] : visibleEdges.filter(([a, b]) => a === selected || b === selected),
+    [selected, visibleEdges],
+  );
+  const focusNodes = useMemo(() => new Set(focusEdges.flatMap(([a, b]) => [a, b])), [focusEdges]);
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
@@ -100,7 +108,14 @@ export function ScienceMap({
     if (showEdges) {
       const limit = Math.min(visibleEdges.length, v.scale > 12 ? 25000 : 15000);
       ctx.lineWidth = 0.5;
-      ctx.strokeStyle = "rgba(140,180,220,0.08)";
+      ctx.strokeStyle =
+        theme === "light"
+          ? selected == null
+            ? "rgba(45,75,105,0.16)"
+            : "rgba(45,75,105,0.04)"
+          : selected == null
+            ? "rgba(140,180,220,0.08)"
+            : "rgba(140,180,220,0.025)";
       ctx.beginPath();
       for (let e = 0; e < limit; e++) {
         const [a, b] = visibleEdges[e]!;
@@ -111,6 +126,20 @@ export function ScienceMap({
       ctx.stroke();
     }
 
+    // Selection reveals every exported one-hop edge, regardless of the background edge limit.
+    if (selected != null && (!matches || matches.has(selected))) {
+      ctx.lineWidth = 1.4;
+      for (const [a, b] of focusEdges) {
+        const neighbor = a === selected ? b : a;
+        ctx.strokeStyle = catColor(graph.nodes[neighbor]!.cat);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(px(a), py(a));
+        ctx.lineTo(px(b), py(b));
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
     for (let i = 0; i < graph.nodes.length; i++) {
       if (matches && !showUnselected && !matches.has(i)) continue;
       const n = graph.nodes[i]!;
@@ -134,6 +163,7 @@ export function ScienceMap({
       if (matches) alpha = matches.has(i) ? 1 : 0.07;
       if (seeds?.has(i) && (!matches || matches.has(i))) alpha = 1;
 
+      if (selected != null && i !== selected && !focusNodes.has(i)) alpha *= 0.12;
       ctx.globalAlpha = alpha;
       if (colorMode === "growth" && (n.growthAvailable === false || !Number.isFinite(n.growth)))
         color = "#9aa4b8";
@@ -143,7 +173,7 @@ export function ScienceMap({
       ctx.fill();
       if (seeds?.has(i) && (!matches || matches.has(i))) {
         ctx.globalAlpha = 1;
-        ctx.strokeStyle = "#ffffff";
+        ctx.strokeStyle = theme === "light" ? "#172b42" : "#ffffff";
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
@@ -154,7 +184,7 @@ export function ScienceMap({
       const { a, c } = highlight;
       for (const b of highlight.bridges ?? []) {
         if (matches && !matches.has(b)) continue;
-        ctx.strokeStyle = "rgba(126,230,168,0.5)";
+        ctx.strokeStyle = theme === "light" ? "rgba(19,117,72,0.65)" : "rgba(126,230,168,0.5)";
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(px(a), py(a));
@@ -169,7 +199,14 @@ export function ScienceMap({
       ctx.save();
       ctx.setLineDash([6, 5]);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = highlight.confirmed ? "#ffc46b" : "#5ad1e6";
+      ctx.strokeStyle =
+        theme === "light"
+          ? highlight.confirmed
+            ? "#925800"
+            : "#086879"
+          : highlight.confirmed
+            ? "#ffc46b"
+            : "#5ad1e6";
       ctx.shadowBlur = 14;
       ctx.shadowColor = ctx.strokeStyle;
       ctx.beginPath();
@@ -183,10 +220,17 @@ export function ScienceMap({
       ] as [number, number, string][]) {
         ctx.beginPath();
         ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = highlight.confirmed ? "#ffc46b" : "#5ad1e6";
+        ctx.fillStyle =
+          theme === "light"
+            ? highlight.confirmed
+              ? "#925800"
+              : "#086879"
+            : highlight.confirmed
+              ? "#ffc46b"
+              : "#5ad1e6";
         ctx.fill();
         ctx.font = "600 12px 'Space Grotesk', sans-serif";
-        ctx.fillStyle = "rgba(240,246,255,0.95)";
+        ctx.fillStyle = theme === "light" ? "#172b42" : "rgba(240,246,255,0.95)";
         ctx.fillText(label, x + 10, y - 8);
       }
     }
@@ -194,13 +238,14 @@ export function ScienceMap({
     const labelCount = v.scale > 6 ? 65 : 20;
     const occupied = new Set<string>();
     ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
-    ctx.fillStyle = "rgba(226,236,250,0.72)";
+    ctx.fillStyle = theme === "light" ? "rgba(23,43,66,0.86)" : "rgba(226,236,250,0.72)";
     let drawn = 0;
     for (let i = 0; i < graph.nodes.length && drawn < labelCount; i++) {
       const cx = px(i);
       const cy = py(i);
       if (cx < 0 || cy < 0 || cx > w || cy > h) continue;
       if (matches && !matches.has(i)) continue;
+      if (selected != null && i !== selected && !focusNodes.has(i)) continue;
       const cell = `${Math.floor(cx / 130)},${Math.floor(cy / 24)}`;
       if (occupied.has(cell)) continue;
       occupied.add(cell);
@@ -211,13 +256,16 @@ export function ScienceMap({
     if (selected != null && (!matches || matches.has(selected)) && graph.nodes[selected]) {
       ctx.beginPath();
       ctx.arc(px(selected), py(selected), 9, 0, Math.PI * 2);
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeStyle = theme === "light" ? "#172b42" : "#ffffff";
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
   }, [
+    theme,
     graph,
     visibleEdges,
+    focusEdges,
+    focusNodes,
     showUnselected,
     showEdges,
     colorMode,

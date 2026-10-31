@@ -6,6 +6,7 @@ import type { MapHighlight } from "./ScienceMap";
 import { exportMapCanvas, type MapCommand, type MapTool } from "@/lib/map-navigation";
 
 interface Props {
+  theme?: "light" | "dark";
   command?: MapCommand;
   tool?: MapTool;
   onHover?: (node: number | null) => void;
@@ -24,6 +25,7 @@ interface Props {
 
 /** Renderizador 3D em canvas: projeção em perspectiva com rotação por arrasto. */
 export function ScienceMap3D({
+  theme = "dark",
   command,
   tool = "navigate",
   onHover,
@@ -72,8 +74,7 @@ export function ScienceMap3D({
         ? []
         : visibleEdges
             .filter(([a, b]) => a === selected || b === selected)
-            .sort((a, b) => b[2] - a[2])
-            .slice(0, 160),
+            .sort((a, b) => b[2] - a[2]),
     [selected, visibleEdges],
   );
   const focusNodes = useMemo(() => new Set(focusEdges.flatMap(([a, b]) => [a, b])), [focusEdges]);
@@ -151,7 +152,14 @@ export function ScienceMap3D({
 
     if (showEdges) {
       const limit = Math.min(visibleEdges.length, selected == null ? 4500 : 1000);
-      ctx.strokeStyle = selected == null ? "rgba(140,190,235,0.13)" : "rgba(140,190,235,0.03)";
+      ctx.strokeStyle =
+        theme === "light"
+          ? selected == null
+            ? "rgba(45,75,105,0.18)"
+            : "rgba(45,75,105,0.04)"
+          : selected == null
+            ? "rgba(140,190,235,0.13)"
+            : "rgba(140,190,235,0.03)";
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       for (let e = 0; e < limit; e++) {
@@ -164,16 +172,19 @@ export function ScienceMap3D({
       ctx.stroke();
     }
 
-    if (showEdges && selected != null) {
+    if (selected != null && (!matches || matches.has(selected))) {
       ctx.lineWidth = 1.4;
-      ctx.strokeStyle = "rgba(220,240,255,0.75)";
-      ctx.beginPath();
       for (const [a, b] of focusEdges) {
         if (P[a * 3 + 2]! <= 1 || P[b * 3 + 2]! <= 1) continue;
+        const neighbor = a === selected ? b : a;
+        ctx.strokeStyle = catColor(graph.nodes[neighbor]!.cat);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
         ctx.moveTo(P[a * 3]!, P[a * 3 + 1]!);
         ctx.lineTo(P[b * 3]!, P[b * 3 + 1]!);
+        ctx.stroke();
       }
-      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
     order.sort((a, b) => P[b * 3 + 2]! - P[a * 3 + 2]!);
     for (const i of order) {
@@ -209,7 +220,7 @@ export function ScienceMap3D({
       const { a, c } = highlight;
       for (const b of highlight.bridges ?? []) {
         if (matches && !matches.has(b)) continue;
-        ctx.strokeStyle = "rgba(126,230,168,0.45)";
+        ctx.strokeStyle = theme === "light" ? "rgba(19,117,72,0.65)" : "rgba(126,230,168,0.45)";
         ctx.lineWidth = 1.1;
         ctx.beginPath();
         ctx.moveTo(P[a * 3]!, P[a * 3 + 1]!);
@@ -220,7 +231,14 @@ export function ScienceMap3D({
       ctx.save();
       ctx.setLineDash([6, 5]);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = highlight.confirmed ? "#ffc46b" : "#5ad1e6";
+      ctx.strokeStyle =
+        theme === "light"
+          ? highlight.confirmed
+            ? "#925800"
+            : "#086879"
+          : highlight.confirmed
+            ? "#ffc46b"
+            : "#5ad1e6";
       ctx.shadowBlur = 14;
       ctx.shadowColor = ctx.strokeStyle;
       ctx.beginPath();
@@ -231,17 +249,24 @@ export function ScienceMap3D({
       for (const i of [a, c]) {
         ctx.beginPath();
         ctx.arc(P[i * 3]!, P[i * 3 + 1]!, 5, 0, Math.PI * 2);
-        ctx.fillStyle = highlight.confirmed ? "#ffc46b" : "#5ad1e6";
+        ctx.fillStyle =
+          theme === "light"
+            ? highlight.confirmed
+              ? "#925800"
+              : "#086879"
+            : highlight.confirmed
+              ? "#ffc46b"
+              : "#5ad1e6";
         ctx.fill();
         ctx.font = "600 12px 'Space Grotesk', sans-serif";
-        ctx.fillStyle = "rgba(240,246,255,0.95)";
+        ctx.fillStyle = theme === "light" ? "#172b42" : "rgba(240,246,255,0.95)";
         ctx.fillText(graph.nodes[i]!.label, P[i * 3]! + 9, P[i * 3 + 1]! - 7);
       }
     }
 
     // rótulos: apenas nós em destaque ou de maior grau
     ctx.font = "500 11px 'IBM Plex Sans', sans-serif";
-    ctx.fillStyle = "rgba(226,236,250,0.7)";
+    ctx.fillStyle = theme === "light" ? "rgba(23,43,66,0.86)" : "rgba(226,236,250,0.7)";
     let drawn = 0;
     const occupied = new Set<string>();
     for (let i = 0; i < n && drawn < 30; i++) {
@@ -258,11 +283,12 @@ export function ScienceMap3D({
     if (selected != null && (!matches || matches.has(selected)) && P[selected * 3 + 2]! > 1) {
       ctx.beginPath();
       ctx.arc(P[selected * 3]!, P[selected * 3 + 1]!, 8, 0, Math.PI * 2);
-      ctx.strokeStyle = "#fff";
+      ctx.strokeStyle = theme === "light" ? "#172b42" : "#fff";
       ctx.lineWidth = 1.4;
       ctx.stroke();
     }
   }, [
+    theme,
     graph,
     layers,
     layerVisibility,
