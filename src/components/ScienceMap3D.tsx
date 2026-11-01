@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { catColor, type ScienceGraph } from "@/lib/science-data";
 import { categoryLayers } from "@/lib/map-layers";
@@ -43,11 +45,13 @@ export function ScienceMap3D({
   onSelect,
   selected,
 }: Props) {
+  const _uiLanguage = useLanguage().language;
+
   const { graph, layers } = useMemo(() => categoryLayers(sourceGraph), [sourceGraph]);
   const primaryColor = accent || (theme === "light" ? "#086879" : "#5ad1e6");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const camRef = useRef({ yaw: 0.25, pitch: 0.6, dist: 330, x: 0, y: 0, z: 0, tx: 0, ty: 0 });
+  const camRef = useRef({ yaw: 0.25, pitch: 0.18, dist: 330, x: 0, y: 0, z: 0, tx: 0, ty: 0 });
   const projRef = useRef<Float32Array>(new Float32Array(0));
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
 
@@ -142,7 +146,7 @@ export function ScienceMap3D({
       ctx.globalAlpha = 0.9;
       ctx.fillStyle = catColor(layer.id);
       ctx.font = "500 10px sans-serif";
-      ctx.fillText(layer.label, corners[0]![0], corners[0]![1] - 4);
+      ctx.fillText(t(layer.label), corners[0]![0], corners[0]![1] - 4);
     }
     ctx.globalAlpha = 1;
     for (let i = 0; i < n; i++) {
@@ -263,7 +267,7 @@ export function ScienceMap3D({
         ctx.fill();
         ctx.font = "600 12px 'Space Grotesk', sans-serif";
         ctx.fillStyle = theme === "light" ? "#172b42" : "rgba(240,246,255,0.95)";
-        ctx.fillText(graph.nodes[i]!.label, P[i * 3]! + 9, P[i * 3 + 1]! - 7);
+        ctx.fillText(t(graph.nodes[i]!.label), P[i * 3]! + 9, P[i * 3 + 1]! - 7);
       }
     }
 
@@ -279,7 +283,7 @@ export function ScienceMap3D({
       occupied.add(cell);
       if (matches && !matches.has(i)) continue;
       if (P[i * 3 + 2]! <= 1) continue;
-      ctx.fillText(graph.nodes[i]!.label, P[i * 3]! + 6, P[i * 3 + 1]! - 5);
+      ctx.fillText(t(graph.nodes[i]!.label), P[i * 3]! + 6, P[i * 3 + 1]! - 5);
       drawn++;
     }
 
@@ -292,6 +296,7 @@ export function ScienceMap3D({
     }
   }, [
     theme,
+    _uiLanguage,
     primaryColor,
     graph,
     layers,
@@ -319,24 +324,22 @@ export function ScienceMap3D({
     (global = false) => {
       const indices = !global && matches ? [...matches] : graph.nodes.map((_, i) => i);
       if (!indices.length) return;
-      let x = 0,
-        y = 0,
-        z = 0;
+      const min = [Infinity, Infinity, Infinity];
+      const max = [-Infinity, -Infinity, -Infinity];
       for (const i of indices) {
         const n = graph.nodes[i]!;
-        x += n.x;
-        y += n.y;
-        z += n.z;
+        [n.x, n.y, n.z].forEach((v, axis) => {
+          min[axis] = Math.min(min[axis]!, v);
+          max[axis] = Math.max(max[axis]!, v);
+        });
       }
-      x /= indices.length;
-      y /= indices.length;
-      z /= indices.length;
+      const [x, y, z] = min.map((v, axis) => (v + max[axis]!) / 2) as [number, number, number];
       let radius = 10;
       for (const i of indices) {
         const n = graph.nodes[i]!;
         radius = Math.max(radius, Math.hypot(n.x - x, n.y - y, n.z - z));
       }
-      Object.assign(camRef.current, { x, y, z, dist: radius * 3.0, tx: 0, ty: 0 });
+      Object.assign(camRef.current, { x, y, z, dist: radius * 2.8, tx: 0, ty: 0 });
       setHover(null);
       drawRef.current();
     },
@@ -353,7 +356,7 @@ export function ScienceMap3D({
       return;
     }
     if (command.action === "fit" || command.action === "reset") {
-      if (command.action === "reset") Object.assign(camRef.current, { yaw: 0.25, pitch: 0.6 });
+      if (command.action === "reset") Object.assign(camRef.current, { yaw: 0.25, pitch: 0.18 });
       fitView(command.action === "reset");
       return;
     }
@@ -481,32 +484,61 @@ export function ScienceMap3D({
       }}
     >
       <canvas ref={canvasRef} className="h-full w-full" />
-      {!onHover && hover && (!matches || matches.has(hover.i)) && graph.nodes[hover.i] && (
-        <div
-          className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
-          style={{
-            left: Math.max(4, Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 300) - 264)),
-            top: Math.max(4, Math.min(hover.y + 14, (wrapRef.current?.clientHeight ?? 200) - 140)),
-          }}
-        >
-          <p className="font-display text-sm font-semibold">{graph.nodes[hover.i]!.label}</p>
-          <p className="mt-1 text-muted-foreground">
-            {graph.nodes[hover.i]!.id} ·{" "}
-            {graph.categories.find((c) => c.id === graph.nodes[hover.i]!.cat)?.label ??
-              graph.nodes[hover.i]!.cat}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            {graph.nodes[hover.i]!.deg} conexões · {graph.nodes[hover.i]!.pubs} artigos
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Índice de crescimento:{" "}
-            {graph.nodes[hover.i]!.growthAvailable !== false &&
-            Number.isFinite(graph.nodes[hover.i]!.growth)
-              ? graph.nodes[hover.i]!.growth.toFixed(3)
-              : "indisponível"}
-          </p>
-        </div>
-      )}
+      <Localized
+        value={
+          !onHover &&
+          hover &&
+          (!matches || matches.has(hover.i)) &&
+          graph.nodes[hover.i] && (
+            <div
+              className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
+              style={{
+                left: Math.max(
+                  4,
+                  Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 300) - 264),
+                ),
+                top: Math.max(
+                  4,
+                  Math.min(hover.y + 14, (wrapRef.current?.clientHeight ?? 200) - 140),
+                ),
+              }}
+            >
+              <p className="font-display text-sm font-semibold">
+                <Localized value={graph.nodes[hover.i]!.label} />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={graph.nodes[hover.i]!.id} />
+                <Localized value={" ·"} />
+                <Localized value={" "} />
+                <Localized
+                  value={
+                    graph.categories.find((c) => c.id === graph.nodes[hover.i]!.cat)?.label ??
+                    graph.nodes[hover.i]!.cat
+                  }
+                />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={graph.nodes[hover.i]!.deg} />
+                <Localized value={" conexões · "} />
+                <Localized value={graph.nodes[hover.i]!.pubs} />
+                <Localized value={" artigos "} />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={" Índice de crescimento:"} />
+                <Localized value={" "} />
+                <Localized
+                  value={
+                    graph.nodes[hover.i]!.growthAvailable !== false &&
+                    Number.isFinite(graph.nodes[hover.i]!.growth)
+                      ? graph.nodes[hover.i]!.growth.toFixed(3)
+                      : "indisponível"
+                  }
+                />
+              </p>
+            </div>
+          )
+        }
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { LanguageProvider } from "@/components/LanguageProvider";
+import { AgentSessionProvider } from "@/components/AgentSessionProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -135,16 +137,20 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <div className="flex h-screen flex-col bg-background">
-          <AppNav />
-          <main className="min-h-0 flex-1 overflow-auto grid-backdrop">
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            <Outlet />
-          </main>
-        </div>
-        <Toaster position="top-right" richColors />
-      </ThemeProvider>
+      <LanguageProvider>
+        <AgentSessionProvider>
+          <ThemeProvider>
+            <div className="flex h-screen flex-col bg-background">
+              <AppNav />
+              <main className="min-h-0 flex-1 overflow-auto grid-backdrop">
+                {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+                <Outlet />
+              </main>
+            </div>
+            <Toaster position="top-right" richColors />
+          </ThemeProvider>
+        </AgentSessionProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

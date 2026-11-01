@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
@@ -58,18 +60,32 @@ export const Route = createFileRoute("/metrics")({
   }),
   ssr: false,
   component: () => (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-muted-foreground">
+          <Localized value={"Carregando métricas…"} />
+        </div>
+      }
+    >
       <MetricsGate />
     </Suspense>
   ),
 });
 
 function MetricsGate() {
+  const _uiLanguage = useLanguage().language;
+
   const { data: idx } = useSuspenseQuery(indexQuery);
   const { data: timeline } = useSuspenseQuery(timelineQuery);
   const [cutoff, setCutoff] = useState(idx.default_cutoff);
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Carregando métricas…</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-muted-foreground">
+          <Localized value={"Carregando métricas…"} />
+        </div>
+      }
+    >
       <MetricsPage
         cutoff={cutoff}
         cutoffs={idx.cutoffs}
@@ -91,6 +107,8 @@ function MetricsPage({
   onCutoff: (v: number) => void;
   timeline: TimelinePoint[];
 }) {
+  const _uiLanguage = useLanguage().language;
+
   const { data: m } = useSuspenseQuery(metricsQuery(cutoff));
   const axis = { stroke: "oklch(0.7 0.024 246)", fontSize: 11 };
   const tooltip = {
@@ -106,32 +124,52 @@ function MetricsPage({
     <div data-tour="validation" className="mx-auto max-w-6xl space-y-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-4xl">
-          <h1 className="font-display text-2xl font-semibold">Validação do modelo</h1>
+          <h1 className="font-display text-2xl font-semibold">
+            <Localized value={"Validação do modelo"} />
+          </h1>
           <p className="mt-2 text-xs text-muted-foreground">
-            Estas métricas avaliam o modelo estrutural e seu ranking histórico. O novo ranking por
-            pontes raras de Swanson é exploratório e ainda não possui validação independente; seus
-            escores não herdam a AUC nem a calibração exibidas aqui.
+            <Localized
+              value={
+                " Estas métricas avaliam o modelo estrutural e seu ranking histórico. O novo ranking por pontes raras de Swanson é exploratório e ainda não possui validação independente; seus escores não herdam a AUC nem a calibração exibidas aqui. "
+              }
+            />
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {m.dynamic ? "Reconstrução preparada" : "Treino"} em literatura até {m.cutoff_year};{" "}
-            {m.cutoff_year < m.window[1]
-              ? `avaliação contra conexões que realmente apareceram entre ${m.window[0]} e ${m.window[1]}`
-              : "este é o último ano do corpus, sem período posterior para confirmação"}
-            . {num(m.n_articles)} artigos, {num(m.graph.nodes)} conceitos MeSH.
+            <Localized value={m.dynamic ? "Reconstrução preparada" : "Treino"} />
+            <Localized value={" em literatura até "} />
+            <Localized value={m.cutoff_year} />
+            <Localized value={";"} />
+            <Localized value={" "} />
+            <Localized
+              value={
+                m.cutoff_year < m.window[1]
+                  ? `avaliação contra conexões que realmente apareceram entre ${m.window[0]} e ${m.window[1]}`
+                  : "este é o último ano do corpus, sem período posterior para confirmação"
+              }
+            />
+            <Localized value={" . "} />
+            <Localized value={num(m.n_articles)} />
+            <Localized value={" artigos, "} />
+            <Localized value={num(m.graph.nodes)} />
+            <Localized value={" conceitos MeSH. "} />
           </p>
         </div>
         <div className="min-w-40">
-          <Label className="mb-1 block text-xs text-muted-foreground">Ano de corte</Label>
+          <Label className="mb-1 block text-xs text-muted-foreground">
+            <Localized value={"Ano de corte"} />
+          </Label>
           <Select value={String(cutoff)} onValueChange={(value) => onCutoff(Number(value))}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {cutoffs.map((year) => (
-                <SelectItem key={year} value={String(year)}>
-                  {year}
-                </SelectItem>
-              ))}
+              <Localized
+                value={cutoffs.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    <Localized value={year} />
+                  </SelectItem>
+                ))}
+              />
             </SelectContent>
           </Select>
         </div>
@@ -139,30 +177,34 @@ function MetricsPage({
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card
-          label="AUC (teste)"
+          label={t("AUC (teste)")}
           value={m.model.auc.toFixed(3)}
           sub={`${m.dynamic ? "faixa indicativa" : "IC95%"} ${m.model.auc_ci95[0].toFixed(3)}–${m.model.auc_ci95[1].toFixed(3)}`}
         />
-        {m.dynamic ? (
-          <Card
-            label="Corte recalculado"
-            value="sob demanda"
-            sub="grafo e ranking derivados do corpus"
-          />
-        ) : (
-          <Card
-            label="Teste de permutação"
-            value={`p = ${m.model.permutation_p < 0.001 ? "<0,001" : m.model.permutation_p.toFixed(3)}`}
-            sub="melhor que o acaso"
-          />
-        )}
+        <Localized
+          value={
+            m.dynamic ? (
+              <Card
+                label={t("Corte recalculado")}
+                value="sob demanda"
+                sub="grafo e ranking derivados do corpus"
+              />
+            ) : (
+              <Card
+                label={t("Teste de permutação")}
+                value={`p = ${m.model.permutation_p < 0.001 ? "<0,001" : m.model.permutation_p.toFixed(3)}`}
+                sub="melhor que o acaso"
+              />
+            )
+          }
+        />
         <Card
-          label="Conexões confirmadas"
+          label={t("Conexões confirmadas")}
           value={`${num(m.confirmations.n_confirmed)}/${num(m.confirmations.n_predicted)}`}
           sub={`${pct(m.confirmations.rate)} do top ranking`}
         />
         <Card
-          label="Lead time mediano"
+          label={t("Lead time mediano")}
           value={`${m.confirmations.median_lead_time ?? "—"} anos`}
           sub="antecipação até a conexão surgir"
         />
@@ -170,7 +212,7 @@ function MetricsPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel
-          title="Comparação com outros modelos"
+          title={t("Comparação com outros modelos")}
           desc="AUC do modelo multiplex vs. baselines estruturais clássicos de link prediction."
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -181,29 +223,41 @@ function MetricsPage({
               <Tooltip {...tooltip} />
               <ReferenceLine x={0.5} stroke="oklch(0.63 0.21 22)" strokeDasharray="4 4" />
               <Bar dataKey="auc" radius={4}>
-                {m.model_comparison.map((d, i) => (
-                  <Cell
-                    key={d.name}
-                    fill={i === 0 ? "var(--color-primary)" : "var(--color-muted-foreground)"}
-                  />
-                ))}
+                <Localized
+                  value={m.model_comparison.map((d, i) => (
+                    <Cell
+                      key={d.name}
+                      fill={i === 0 ? "var(--color-primary)" : "var(--color-muted-foreground)"}
+                    />
+                  ))}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          {m.delong_vs_best_baseline && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Teste de DeLong contra o melhor baseline: z = {m.delong_vs_best_baseline.z.toFixed(2)}
-              , p ={" "}
-              {m.delong_vs_best_baseline.p < 0.001
-                ? "<0,001"
-                : m.delong_vs_best_baseline.p.toFixed(4)}
-              .
-            </p>
-          )}
+          <Localized
+            value={
+              m.delong_vs_best_baseline && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  <Localized value={" Teste de DeLong contra o melhor baseline: z = "} />
+                  <Localized value={m.delong_vs_best_baseline.z.toFixed(2)} />
+                  <Localized value={" , p ="} />
+                  <Localized value={" "} />
+                  <Localized
+                    value={
+                      m.delong_vs_best_baseline.p < 0.001
+                        ? "<0,001"
+                        : m.delong_vs_best_baseline.p.toFixed(4)
+                    }
+                  />
+                  <Localized value={" . "} />
+                </p>
+              )
+            }
+          />
         </Panel>
 
         <Panel
-          title="Precision@k / Recall@k"
+          title={t("Precision@k / Recall@k")}
           desc="O que importa na prática é o topo do ranking: quantos dos k primeiros pares viraram conexão real."
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -219,7 +273,7 @@ function MetricsPage({
         </Panel>
 
         <Panel
-          title="Calibração"
+          title={t("Calibração")}
           desc={`Curva de confiabilidade. Brier score = ${m.calibration.brier.toFixed(3)} (menor é melhor).`}
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -240,7 +294,7 @@ function MetricsPage({
         </Panel>
 
         <Panel
-          title="Tempo até a nova conexão aparecer"
+          title={t("Tempo até a nova conexão aparecer")}
           desc="Distribuição do lead time entre a previsão (ano de corte) e a primeira co-ocorrência real."
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -255,7 +309,7 @@ function MetricsPage({
         </Panel>
 
         <Panel
-          title="Importância das features"
+          title={t("Importância das features")}
           desc="Contribuição de cada sinal do multiplex para a predição."
         >
           <ResponsiveContainer width="100%" height={260}>
@@ -270,7 +324,7 @@ function MetricsPage({
         </Panel>
 
         <Panel
-          title="Estrutura da rede"
+          title={t("Estrutura da rede")}
           desc="Diagnósticos do grafo pré-corte usados para validar o regime livre de escala."
         >
           <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -280,35 +334,52 @@ function MetricsPage({
             <Item k="Densidade" v={m.graph.density.toExponential(2)} />
             <Item k="Pares avaliados" v={num(m.labels.n)} />
             <Item k="Taxa base de positivos" v={pct(m.labels.rate)} />
-            {m.powerlaw && (
-              <>
-                <Item k="Lei de potência α" v={m.powerlaw.alpha.toFixed(2)} />
-                <Item
-                  k="vs. lognormal"
-                  v={`R = ${m.powerlaw.loglik_ratio_vs_lognormal.toFixed(2)} (p = ${m.powerlaw.p.toFixed(2)})`}
-                />
-              </>
-            )}
+            <Localized
+              value={
+                m.powerlaw && (
+                  <>
+                    <Item k="Lei de potência α" v={m.powerlaw.alpha.toFixed(2)} />
+                    <Item
+                      k="vs. lognormal"
+                      v={`R = ${m.powerlaw.loglik_ratio_vs_lognormal.toFixed(2)} (p = ${m.powerlaw.p.toFixed(2)})`}
+                    />
+                  </>
+                )
+              }
+            />
           </dl>
-          {m.demo && (
-            <Badge variant="outline" className="mt-4">
-              Dados de demonstração — rode pipeline/build_mesh_graph.py para substituir
-            </Badge>
-          )}
+          <Localized
+            value={
+              m.demo && (
+                <Badge variant="outline" className="mt-4">
+                  <Localized
+                    value={
+                      " Dados de demonstração — rode pipeline/build_mesh_graph.py para substituir "
+                    }
+                  />
+                </Badge>
+              )
+            }
+          />
         </Panel>
       </div>
 
       <section className="space-y-4 border-t border-border pt-6">
         <div>
-          <h2 className="font-display text-xl font-semibold">Comparativo por ano de corte</h2>
+          <h2 className="font-display text-xl font-semibold">
+            <Localized value={"Comparativo por ano de corte"} />
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Os recortes estatísticos publicados foram reunidos aqui para comparar desempenho,
-            confirmações e antecipação sem sair da Validação.
+            <Localized
+              value={
+                " Os recortes estatísticos publicados foram reunidos aqui para comparar desempenho, confirmações e antecipação sem sair da Validação. "
+              }
+            />
           </p>
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
           <Panel
-            title="Desempenho ao longo do tempo"
+            title={t("Desempenho ao longo do tempo")}
             desc="AUC e precision@50 nos recortes validados."
           >
             <ResponsiveContainer width="100%" height={260}>
@@ -329,7 +400,7 @@ function MetricsPage({
             </ResponsiveContainer>
           </Panel>
           <Panel
-            title="Confirmações após cada corte"
+            title={t("Confirmações após cada corte")}
             desc="Quantidade prevista e confirmada na literatura posterior."
           >
             <ResponsiveContainer width="100%" height={260}>
@@ -358,31 +429,59 @@ function MetricsPage({
           <table className="w-full min-w-[700px] text-sm">
             <thead className="bg-secondary/60 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="p-3">Corte</th>
-                <th className="p-3">AUC</th>
-                <th className="p-3">Precision@50</th>
-                <th className="p-3">Confirmadas</th>
-                <th className="p-3">Taxa</th>
-                <th className="p-3">Lead time mediano</th>
+                <th className="p-3">
+                  <Localized value={"Corte"} />
+                </th>
+                <th className="p-3">
+                  <Localized value={"AUC"} />
+                </th>
+                <th className="p-3">
+                  <Localized value={"Precision@50"} />
+                </th>
+                <th className="p-3">
+                  <Localized value={"Confirmadas"} />
+                </th>
+                <th className="p-3">
+                  <Localized value={"Taxa"} />
+                </th>
+                <th className="p-3">
+                  <Localized value={"Lead time mediano"} />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {timeline.map((item) => (
-                <tr key={item.cutoff_year}>
-                  <td className="p-3 font-mono text-primary">{item.cutoff_year}</td>
-                  <td className="p-3">{item.auc.toFixed(3)}</td>
-                  <td className="p-3">
-                    {item.precision_at_50 == null ? "—" : pct(item.precision_at_50)}
-                  </td>
-                  <td className="p-3">
-                    {num(item.n_confirmed)}/{num(item.n_predicted)}
-                  </td>
-                  <td className="p-3">{pct(item.rate)}</td>
-                  <td className="p-3">
-                    {item.median_lead_time == null ? "—" : `${item.median_lead_time} anos`}
-                  </td>
-                </tr>
-              ))}
+              <Localized
+                value={timeline.map((item) => (
+                  <tr key={item.cutoff_year}>
+                    <td className="p-3 font-mono text-primary">
+                      <Localized value={item.cutoff_year} />
+                    </td>
+                    <td className="p-3">
+                      <Localized value={item.auc.toFixed(3)} />
+                    </td>
+                    <td className="p-3">
+                      <Localized
+                        value={item.precision_at_50 == null ? "—" : pct(item.precision_at_50)}
+                      />
+                    </td>
+                    <td className="p-3">
+                      <Localized value={num(item.n_confirmed)} />
+                      <Localized value={"/"} />
+                      <Localized value={num(item.n_predicted)} />
+                    </td>
+                    <td className="p-3">
+                      <Localized value={pct(item.rate)} />
+                    </td>
+                    <td className="p-3">
+                      <Localized
+                        value={
+                          item.median_lead_time == null ? "—" : `${item.median_lead_time} anos`
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              />
             </tbody>
           </table>
         </div>
@@ -392,11 +491,19 @@ function MetricsPage({
 }
 
 function Card({ label, value, sub }: { label: string; value: string; sub: string }) {
+  const _uiLanguage = useLanguage().language;
+
   return (
     <div className="panel p-4">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="stat-value mt-1 text-2xl text-primary">{value}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+        <Localized value={label} />
+      </p>
+      <p className="stat-value mt-1 text-2xl text-primary">
+        <Localized value={value} />
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        <Localized value={sub} />
+      </p>
     </div>
   );
 }
@@ -410,20 +517,32 @@ function Panel({
   desc: string;
   children: React.ReactNode;
 }) {
+  const _uiLanguage = useLanguage().language;
+
   return (
     <section className="panel p-5">
-      <h2 className="font-display text-base font-semibold">{title}</h2>
-      <p className="mb-4 mt-1 text-xs text-muted-foreground">{desc}</p>
-      {children}
+      <h2 className="font-display text-base font-semibold">
+        <Localized value={title} />
+      </h2>
+      <p className="mb-4 mt-1 text-xs text-muted-foreground">
+        <Localized value={desc} />
+      </p>
+      <Localized value={children} />
     </section>
   );
 }
 
 function Item({ k, v }: { k: string; v: string }) {
+  const _uiLanguage = useLanguage().language;
+
   return (
     <div>
-      <dt className="text-xs text-muted-foreground">{k}</dt>
-      <dd className="stat-value text-sm">{v}</dd>
+      <dt className="text-xs text-muted-foreground">
+        <Localized value={k} />
+      </dt>
+      <dd className="stat-value text-sm">
+        <Localized value={v} />
+      </dd>
     </div>
   );
 }
