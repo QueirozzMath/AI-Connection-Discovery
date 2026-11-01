@@ -66,7 +66,9 @@ export function HypothesisReport({ result }: { result: HypothesisResult }) {
             <Localized value={result.novelty} />
           </Badge>
           <Badge variant="secondary">
-            <Localized value={result.model} />
+            <Localized
+              value={result.ai ? `${result.ai.provider} · ${result.model}` : result.model}
+            />
           </Badge>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">

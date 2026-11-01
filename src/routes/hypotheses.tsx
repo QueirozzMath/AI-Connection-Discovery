@@ -1,3 +1,4 @@
+import { AiSettingsPanel } from "@/components/AiSettingsPanel";
 import { selectionKey } from "@/lib/agent-session";
 import { reportTextFields } from "@/lib/translation-validation";
 import { t, getLocale } from "@/lib/ui-language";
@@ -150,9 +151,15 @@ function HypothesesPage() {
     queryFn: () => readConfiguration(),
     staleTime: 60000,
   });
-  const { apiKey, setApiKey } = session;
-  const [keyDraft, setKeyDraft] = useState("");
-  const aiReady = Boolean(aiConfiguration?.configured || apiKey);
+  const { apiKey, ai } = session;
+  const aiReady =
+    ai.mode === "free" ||
+    Boolean(
+      ai.model.trim() &&
+      (ai.mode === "custom"
+        ? aiConfiguration?.customEndpoints.includes(ai.baseUrl.replace(/\/+$/, ""))
+        : apiKey),
+    );
 
   const initial = useMemo(() => {
     if (search.a && search.c) {
@@ -305,7 +312,14 @@ function HypothesesPage() {
           if (originalResult[field]) fields[field] = originalResult[field];
       if (originalCheck && (originalCheck.language ?? "pt") !== language)
         fields["rationale"] = originalCheck.rationale;
-      const text = await runTranslate({ data: { fields, language, apiKey: apiKey || undefined } });
+      const text = await runTranslate({
+        data: {
+          fields,
+          language,
+          ai,
+          apiKey: ai.mode === "free" ? undefined : apiKey || undefined,
+        },
+      });
       session.saveTranslation(
         translationKey,
         {
@@ -361,7 +375,8 @@ function HypothesesPage() {
         data: {
           plans: evidenceInput.plans,
           expanded,
-          apiKey: apiKey || undefined,
+          ai,
+          apiKey: ai.mode === "free" ? undefined : apiKey || undefined,
           language,
           a: pair.a,
           c: pair.c,
@@ -389,7 +404,8 @@ function HypothesesPage() {
     try {
       const res = await runVerify({
         data: {
-          apiKey: apiKey || undefined,
+          ai,
+          apiKey: ai.mode === "free" ? undefined : apiKey || undefined,
           language,
           a: pair.a,
           c: pair.c,
@@ -785,92 +801,7 @@ function HypothesesPage() {
                 }
               />
             </section>
-            <Localized
-              value={
-                !aiConfiguration?.configured && (
-                  <div className="mt-4 rounded-lg border border-border bg-secondary/30 p-4 text-sm">
-                    <p className="font-medium">
-                      <Localized value={"IA com Gemini"} />
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                      <Localized
-                        value={
-                          " Use sua chave do Google AI Studio. A API oferece uma faixa gratuita, sujeita a cotas."
-                        }
-                      />
-                      <Localized value={" "} />
-                      <a
-                        href="https://aistudio.google.com/apikey"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline"
-                      >
-                        <Localized value={" Criar chave "} />
-                      </a>
-                      <Localized
-                        value={
-                          " . A chave fica apenas na memória desta aba e é enviada ao servidor para acessar o Gemini; não é salva no navegador. Recarregar a página remove a chave. "
-                        }
-                      />
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      <Localized
-                        value={
-                          " Na faixa gratuita, o Google pode usar os dados enviados para melhorar seus produtos. "
-                        }
-                      />
-                    </p>
-                    <Localized
-                      value={
-                        apiKey ? (
-                          <div className="mt-3 flex items-center gap-3">
-                            <span className="text-xs">
-                              <Localized value={"Chave disponível nesta sessão"} />
-                            </span>
-                            <Button variant="outline" size="sm" onClick={() => setApiKey("")}>
-                              <Localized value={" Remover chave "} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <form
-                            className="mt-3 flex flex-wrap gap-2"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              setApiKey(keyDraft.trim());
-                              setKeyDraft("");
-                            }}
-                          >
-                            <label htmlFor="gemini-api-key" className="sr-only">
-                              <Localized value={" Chave da API Gemini "} />
-                            </label>
-                            <Input
-                              id="gemini-api-key"
-                              type="password"
-                              autoComplete="off"
-                              spellCheck={false}
-                              placeholder={t("Chave da API Gemini")}
-                              value={keyDraft}
-                              onChange={(event) => setKeyDraft(event.target.value)}
-                              className="min-w-48 flex-1"
-                              minLength={20}
-                              maxLength={200}
-                              required
-                            />
-                            <Button
-                              type="submit"
-                              variant="secondary"
-                              disabled={keyDraft.trim().length < 20}
-                            >
-                              <Localized value={" Usar nesta sessão "} />
-                            </Button>
-                          </form>
-                        )
-                      }
-                    />
-                  </div>
-                )
-              }
-            />
+            <AiSettingsPanel configuration={aiConfiguration} />
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 onClick={generate}
@@ -933,7 +864,7 @@ function HypothesesPage() {
                 : translationError
                   ? t(translationError)
                   : t(
-                      "Informe uma chave válida para traduzir o relatório existente. O resultado original foi preservado.",
+                      "Escolha o modo gratuito ou configure sua API para traduzir o relatório existente. O resultado original foi preservado.",
                     )}
               {translationError && (
                 <Button variant="outline" className="ml-2" onClick={translateReport}>
@@ -972,6 +903,11 @@ function HypothesesPage() {
                       }
                     />
                   </div>
+                  {check.ai && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {check.ai.provider} · {check.ai.model}
+                    </p>
+                  )}
                   <p className="mt-3 whitespace-pre-line text-sm leading-relaxed">
                     <CitationText
                       text={check.rationale}

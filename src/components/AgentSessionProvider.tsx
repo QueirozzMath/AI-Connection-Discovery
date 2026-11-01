@@ -1,3 +1,4 @@
+import { defaultAiSettings, type AiSettings } from "@/lib/ai-settings";
 import {
   createContext,
   useContext,
@@ -31,6 +32,8 @@ const Context = createContext<{
       check: VerificationResult | undefined;
     },
   ) => void;
+  ai: AiSettings;
+  setAi: (settings: AiSettings) => void;
   apiKey: string;
   setApiKey: (key: string) => void;
   pending: Record<string, boolean>;
@@ -41,6 +44,7 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AgentSession>(emptySession);
   const [hydrated, setHydrated] = useState(false);
   const [apiKey, setApiKey] = useState("");
+  const [ai, setAi] = useState<AiSettings>(defaultAiSettings);
   const [pending, setPendingState] = useState<Record<string, boolean>>({});
   useEffect(() => {
     try {
@@ -106,6 +110,8 @@ export function AgentSessionProvider({ children }: { children: ReactNode }) {
         setResults,
         setChecks,
         saveTranslation,
+        ai,
+        setAi,
         apiKey,
         setApiKey,
         pending,

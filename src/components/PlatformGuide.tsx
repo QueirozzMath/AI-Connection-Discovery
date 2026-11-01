@@ -34,7 +34,7 @@ function answer(question: string) {
     q.includes("chave") ||
     q.includes("key")
   )
-    return "Abra Agentes, escolha o ano e o par, insira sua chave Gemini na caixa segura da sessão e clique em Gerar hipótese. A chave não fica salva ao recarregar a página.";
+    return "Abra Agentes, escolha o ano e o par e use o modo Gratuito sem chave pessoal. Se preferir, selecione Minha chave de API ou Modelo próprio / LiteLLM, informe o modelo e clique em Gerar hipótese. As chaves ficam somente na memória da sessão.";
   if (q.includes("auc") || q.includes("valid"))
     return "AUC próxima de 1 indica boa ordenação de conexões futuras; 0,5 equivale ao acaso. Uma associação posterior deve ser verificada nos estudos originais; ela não demonstra causalidade.";
   if (
@@ -59,11 +59,21 @@ function answer(question: string) {
   return "Posso explicar MeSH, descritores, anos de corte, mapa, inferência, Agentes, operadores E/OU e verificação das evidências. Tente perguntar sobre uma dessas funções.";
 }
 
-export function PlatformGuide() {
+export function PlatformGuide({
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+} = {}) {
   const _uiLanguage = useLanguage().language;
 
   const [mode, setMode] = useState<"guide" | "chat" | "about">("guide");
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [tour, setTour] = useState(false);
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; text: string }[]>([
@@ -89,14 +99,16 @@ export function PlatformGuide() {
       <Localized value={" "} />
       <Localized value={tour && <GuidedTour onClose={() => setTour(false)} />} />
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1.5">
-            <HelpCircle className="size-4" />
-            <span className="hidden md:inline">
-              <Localized value={"Guia"} />
-            </span>
-          </Button>
-        </DialogTrigger>
+        {!hideTrigger && (
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1.5">
+              <HelpCircle className="size-4" />
+              <span className="hidden md:inline">
+                <Localized value={"Guia"} />
+              </span>
+            </Button>
+          </DialogTrigger>
+        )}
         <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
