@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronRight, ExternalLink, Network, Search } from "lucide-react";
@@ -30,6 +32,8 @@ export function MeshHierarchyExplorer({
   operator: "and" | "or";
   onSelect?: (id: string) => void;
 }) {
+  const _uiLanguage = useLanguage().language;
+
   const corpusQuery = useQuery({
     queryKey: ["mesh-hierarchy-corpus"],
     queryFn: corpus,
@@ -185,14 +189,17 @@ export function MeshHierarchyExplorer({
   if (error)
     return (
       <p className="p-6">
-        Não foi possível carregar o catálogo MeSH e os artigos. Reabra esta visualização para tentar
-        novamente.
+        <Localized
+          value={
+            " Não foi possível carregar o catálogo MeSH e os artigos. Reabra esta visualização para tentar novamente. "
+          }
+        />
       </p>
     );
   if (!data || !vocabulary)
     return (
       <p role="status" className="p-6">
-        Carregando o vocabulário MeSH completo e o índice de artigos…
+        <Localized value={" Carregando o vocabulário MeSH completo e o índice de artigos… "} />
       </p>
     );
 
@@ -200,25 +207,35 @@ export function MeshHierarchyExplorer({
     <div className="h-full overflow-auto p-4 space-y-4" data-tour="explorer">
       <header>
         <h2 className="font-display text-lg flex gap-2 items-center">
-          <Network className="size-5 text-primary" /> Conexões entre assuntos e artigos
+          <Network className="size-5 text-primary" />
+          <Localized value={" Conexões entre assuntos e artigos "} />
         </h2>
         <p className="text-xs text-muted-foreground mt-1">
-          MeSH {vocabulary.version} completo · {vocabulary.descriptor_count.toLocaleString("pt-BR")}{" "}
-          descritores · {vocabulary.term_count.toLocaleString("pt-BR")} termos ·{" "}
-          {graph ? "filtros do mapa ativos" : "exploração bibliográfica independente"}
+          <Localized value={" MeSH "} />
+          <Localized value={vocabulary.version} />
+          <Localized value={" completo · "} />
+          <Localized value={vocabulary.descriptor_count.toLocaleString(getLocale())} />
+          <Localized value={" "} />
+          <Localized value={" descritores · "} />
+          <Localized value={vocabulary.term_count.toLocaleString(getLocale())} />
+          <Localized value={" termos ·"} />
+          <Localized value={" "} />
+          <Localized
+            value={graph ? "filtros do mapa ativos" : "exploração bibliográfica independente"}
+          />
         </p>
       </header>
       <div className="relative">
         <Search className="absolute left-3 top-3 size-4 text-muted-foreground" />
         <Input
-          aria-label="Encontrar artigo, descritor ou termo MeSH"
-          placeholder="Título, PMID, descritor ou sinônimo MeSH…"
+          aria-label={t("Encontrar artigo, descritor ou termo MeSH")}
+          placeholder={t("Título, PMID, descritor ou sinônimo MeSH…")}
           className="pl-9"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
       </div>
-      <nav aria-label="Caminho MeSH" className="flex flex-wrap gap-1 items-center text-xs">
+      <nav aria-label={t("Caminho MeSH")} className="flex flex-wrap gap-1 items-center text-xs">
         <button
           className="rounded bg-secondary px-2 py-2"
           onClick={() => {
@@ -227,23 +244,25 @@ export function MeshHierarchyExplorer({
             setQuery("");
           }}
         >
-          Todas as categorias
+          <Localized value={" Todas as categorias "} />
         </button>
-        {path.map((id, index) => (
-          <span key={id} className="flex items-center gap-1">
-            <ChevronRight className="size-3" />
-            <button
-              className="rounded border border-primary/40 px-2 py-2 text-primary"
-              onClick={() => {
-                setPath(path.slice(0, index + 1));
-                setSelected([]);
-                setQuery("");
-              }}
-            >
-              {name(id)}
-            </button>
-          </span>
-        ))}
+        <Localized
+          value={path.map((id, index) => (
+            <span key={id} className="flex items-center gap-1">
+              <ChevronRight className="size-3" />
+              <button
+                className="rounded border border-primary/40 px-2 py-2 text-primary"
+                onClick={() => {
+                  setPath(path.slice(0, index + 1));
+                  setSelected([]);
+                  setQuery("");
+                }}
+              >
+                <Localized value={name(id)} />
+              </button>
+            </span>
+          ))}
+        />
       </nav>
       <section className="rounded-xl border border-border bg-sidebar/60 p-4">
         <div className="flex items-center gap-3">
@@ -253,142 +272,202 @@ export function MeshHierarchyExplorer({
           />
           <div>
             <h3 className="font-display font-semibold">
-              {searched ? "Resultados no vocabulário MeSH" : branch ? name(branch) : "Árvore MeSH"}
+              <Localized
+                value={
+                  searched
+                    ? "Resultados no vocabulário MeSH"
+                    : branch
+                      ? name(branch)
+                      : "Árvore MeSH"
+                }
+              />
             </h3>
             <p className="text-xs text-muted-foreground">
-              {scope.length.toLocaleString("pt-BR")} descritores neste contexto
+              <Localized value={scope.length.toLocaleString(getLocale())} />
+              <Localized value={" descritores neste contexto "} />
             </p>
           </div>
         </div>
         <div className="ml-2 mt-3 border-l-2 border-primary/30 pl-5 space-y-2">
-          {groups.map(([id, members]) => (
-            <button
-              key={id}
-              data-tour="mesh-branch"
-              onClick={() => {
-                setPath([...path, id]);
-                setSelected([]);
-              }}
-              className="relative w-full flex items-center gap-3 text-left rounded-lg border border-border bg-background p-3 hover:border-primary before:absolute before:-left-5 before:w-5 before:border-t before:border-primary/30"
-            >
-              <span
-                className="size-2 shrink-0 rounded-full"
-                style={{ background: catColor(id[0]!) }}
-              />
-              <span className="flex-1 text-sm">
-                {name(id)}
-                <span className="block text-[10px] text-muted-foreground font-mono">
-                  {id} · {members.size.toLocaleString("pt-BR")} descritores
-                </span>
-              </span>
-              <ChevronRight className="size-4" />
-            </button>
-          ))}
-          {leaves.map((index) => {
-            const descriptor = vocabulary.descriptors[index]!;
-            return (
+          <Localized
+            value={groups.map(([id, members]) => (
               <button
-                key={descriptor[0]}
-                aria-pressed={selected.includes(descriptor[0])}
+                key={id}
+                data-tour="mesh-branch"
                 onClick={() => {
-                  setSelected((current) =>
-                    current.includes(descriptor[0])
-                      ? current.filter((id) => id !== descriptor[0])
-                      : [...current, descriptor[0]],
-                  );
-                  onSelect?.(descriptor[0]);
+                  setPath([...path, id]);
+                  setSelected([]);
                 }}
-                className="relative w-full rounded-lg border border-border p-3 text-left text-sm aria-pressed:border-primary aria-pressed:bg-primary/15 hover:bg-secondary before:absolute before:-left-5 before:top-1/2 before:w-5 before:border-t before:border-primary/30"
+                className="relative w-full flex items-center gap-3 text-left rounded-lg border border-border bg-background p-3 hover:border-primary before:absolute before:-left-5 before:w-5 before:border-t before:border-primary/30"
               >
-                <span className="text-primary">● </span>
-                {descriptor[1]}
-                <span className="block text-[10px] text-muted-foreground">
-                  {descriptor[0]} · {paths(descriptor).join(" · ")}
-                  {descriptor[3].length ? ` · ${descriptor[3].length} termos relacionados` : ""}
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: catColor(id[0]!) }}
+                />
+                <span className="flex-1 text-sm">
+                  <Localized value={name(id)} />
+                  <span className="block text-[10px] text-muted-foreground font-mono">
+                    <Localized value={id} />
+                    <Localized value={" · "} />
+                    <Localized value={members.size.toLocaleString(getLocale())} />
+                    <Localized value={" descritores "} />
+                  </span>
                 </span>
+                <ChevronRight className="size-4" />
               </button>
-            );
-          })}
+            ))}
+          />
+          <Localized
+            value={leaves.map((index) => {
+              const descriptor = vocabulary.descriptors[index]!;
+              return (
+                <button
+                  key={descriptor[0]}
+                  aria-pressed={selected.includes(descriptor[0])}
+                  onClick={() => {
+                    setSelected((current) =>
+                      current.includes(descriptor[0])
+                        ? current.filter((id) => id !== descriptor[0])
+                        : [...current, descriptor[0]],
+                    );
+                    onSelect?.(descriptor[0]);
+                  }}
+                  className="relative w-full rounded-lg border border-border p-3 text-left text-sm aria-pressed:border-primary aria-pressed:bg-primary/15 hover:bg-secondary before:absolute before:-left-5 before:top-1/2 before:w-5 before:border-t before:border-primary/30"
+                >
+                  <span className="text-primary">
+                    <Localized value={"● "} />
+                  </span>
+                  <Localized value={descriptor[1]} />
+                  <span className="block text-[10px] text-muted-foreground">
+                    <Localized value={descriptor[0]} />
+                    <Localized value={" · "} />
+                    <Localized value={paths(descriptor).join(" · ")} />
+                    <Localized
+                      value={
+                        descriptor[3].length ? ` · ${descriptor[3].length} termos relacionados` : ""
+                      }
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          />
         </div>
-        {leaves.length === 240 && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Mostrando 240 descritores. Refine o ramo ou use a busca para chegar ao termo desejado.
-          </p>
-        )}
+        <Localized
+          value={
+            leaves.length === 240 && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                <Localized
+                  value={
+                    " Mostrando 240 descritores. Refine o ramo ou use a busca para chegar ao termo desejado. "
+                  }
+                />
+              </p>
+            )
+          }
+        />
       </section>
       <div className="flex justify-center text-xs text-primary">
-        ↓ assuntos conectados aos artigos ↓
+        <Localized value={" ↓ assuntos conectados aos artigos ↓ "} />
       </div>
       <section className="rounded-xl border border-primary/30 bg-sidebar/60 p-4">
         <div className="flex justify-between gap-2">
           <h3 className="font-display flex items-center gap-2">
-            <BookOpen className="size-4" /> {articles.length.toLocaleString("pt-BR")} artigos
+            <BookOpen className="size-4" />{" "}
+            <Localized value={articles.length.toLocaleString(getLocale())} />
+            <Localized value={" artigos "} />
           </h3>
-          {selected.length > 0 && (
-            <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-              Limpar descritores ({selected.length})
-            </Button>
-          )}
+          <Localized
+            value={
+              selected.length > 0 && (
+                <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
+                  <Localized value={" Limpar descritores ("} />
+                  <Localized value={selected.length} />
+                  <Localized value={") "} />
+                </Button>
+              )
+            }
+          />
         </div>
-        {articles.slice(page * 20, page * 20 + 20).map((article) => (
-          <article key={article[0]} className="py-4 border-b border-border last:border-0">
-            <a
-              className="text-sm hover:text-primary"
-              href={`https://pubmed.ncbi.nlm.nih.gov/${article[0]}/`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {article[2] || `Artigo ${article[0]}`} <ExternalLink className="inline size-3" />
-            </a>
-            <p className="text-[10px] text-muted-foreground mt-1">
-              {article[1]} · PMID {article[0]}
-            </p>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {article[3].slice(0, 12).map((index) => (
-                <button
-                  key={index}
-                  className="rounded-full border border-primary/30 px-2 py-1 text-[10px] text-primary hover:bg-primary/10"
-                  onClick={() => {
-                    const concept = data.concepts[index]!;
-                    setSelected([concept[0]]);
-                    onSelect?.(concept[0]);
-                  }}
+        <Localized
+          value={articles.slice(page * 20, page * 20 + 20).map((article) => (
+            <article key={article[0]} className="py-4 border-b border-border last:border-0">
+              <a
+                className="text-sm hover:text-primary"
+                href={`https://pubmed.ncbi.nlm.nih.gov/${article[0]}/`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Localized value={article[2] || `Artigo ${article[0]}`} />{" "}
+                <ExternalLink className="inline size-3" />
+              </a>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                <Localized value={article[1]} />
+                <Localized value={" · PMID "} />
+                <Localized value={article[0]} />
+              </p>
+              <div className="flex flex-wrap gap-1 mt-2">
+                <Localized
+                  value={article[3].slice(0, 12).map((index) => (
+                    <button
+                      key={index}
+                      className="rounded-full border border-primary/30 px-2 py-1 text-[10px] text-primary hover:bg-primary/10"
+                      onClick={() => {
+                        const concept = data.concepts[index]!;
+                        setSelected([concept[0]]);
+                        onSelect?.(concept[0]);
+                      }}
+                    >
+                      <Localized value={data.concepts[index]![1]} />
+                    </button>
+                  ))}
+                />
+              </div>
+            </article>
+          ))}
+        />
+        <Localized
+          value={
+            !articles.length && (
+              <p className="py-8 text-sm text-muted-foreground">
+                <Localized
+                  value={
+                    " Nenhum artigo da amostra contém esta combinação. O descritor continua disponível no vocabulário MeSH completo; tente OU, amplie o período ou selecione um termo ancestral. "
+                  }
+                />
+              </p>
+            )
+          }
+        />
+        <Localized
+          value={
+            articles.length > 20 && (
+              <div className="flex justify-between items-center pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!page}
+                  onClick={() => setPage((p) => p - 1)}
                 >
-                  {data.concepts[index]![1]}
-                </button>
-              ))}
-            </div>
-          </article>
-        ))}
-        {!articles.length && (
-          <p className="py-8 text-sm text-muted-foreground">
-            Nenhum artigo da amostra contém esta combinação. O descritor continua disponível no
-            vocabulário MeSH completo; tente OU, amplie o período ou selecione um termo ancestral.
-          </p>
-        )}
-        {articles.length > 20 && (
-          <div className="flex justify-between items-center pt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!page}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Anterior
-            </Button>
-            <span className="text-xs">
-              {page + 1} / {Math.ceil(articles.length / 20)}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={(page + 1) * 20 >= articles.length}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Próxima
-            </Button>
-          </div>
-        )}
+                  <Localized value={" Anterior "} />
+                </Button>
+                <span className="text-xs">
+                  <Localized value={page + 1} />
+                  <Localized value={" / "} />
+                  <Localized value={Math.ceil(articles.length / 20)} />
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={(page + 1) * 20 >= articles.length}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <Localized value={" Próxima "} />
+                </Button>
+              </div>
+            )
+          }
+        />
       </section>
     </div>
   );

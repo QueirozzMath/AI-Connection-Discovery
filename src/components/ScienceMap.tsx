@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { catColor, type ScienceGraph } from "@/lib/science-data";
 
@@ -53,6 +55,8 @@ export function ScienceMap({
   onSelect,
   selected,
 }: Props) {
+  const _uiLanguage = useLanguage().language;
+
   const primaryColor = accent || (theme === "light" ? "#086879" : "#5ad1e6");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -234,7 +238,7 @@ export function ScienceMap({
         ctx.fill();
         ctx.font = "600 12px 'Space Grotesk', sans-serif";
         ctx.fillStyle = theme === "light" ? "#172b42" : "rgba(240,246,255,0.95)";
-        ctx.fillText(label, x + 10, y - 8);
+        ctx.fillText(t(label), x + 10, y - 8);
       }
     }
 
@@ -252,7 +256,7 @@ export function ScienceMap({
       const cell = `${Math.floor(cx / 130)},${Math.floor(cy / 24)}`;
       if (occupied.has(cell)) continue;
       occupied.add(cell);
-      ctx.fillText(graph.nodes[i]!.label, cx + 6, cy - 5);
+      ctx.fillText(t(graph.nodes[i]!.label), cx + 6, cy - 5);
       drawn++;
     }
 
@@ -265,6 +269,7 @@ export function ScienceMap({
     }
   }, [
     theme,
+    _uiLanguage,
     primaryColor,
     graph,
     visibleEdges,
@@ -489,42 +494,76 @@ export function ScienceMap({
       }}
     >
       <canvas ref={canvasRef} className="h-full w-full" />
-      {region && (
-        <div
-          className="pointer-events-none absolute border border-primary bg-primary/10"
-          style={{ left: region.x, top: region.y, width: region.w, height: region.h }}
-        />
-      )}
-      {!onHover && hover && (!matches || matches.has(hover.i)) && graph.nodes[hover.i] && (
-        <div
-          className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
-          style={{
-            left: Math.max(4, Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 300) - 264)),
-            top: Math.max(4, Math.min(hover.y + 14, (wrapRef.current?.clientHeight ?? 200) - 140)),
-          }}
-        >
-          <p className="font-display text-sm font-semibold text-foreground">
-            {graph.nodes[hover.i]!.label}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            {graph.nodes[hover.i]!.id} ·{" "}
-            {graph.categories.find((c) => c.id === graph.nodes[hover.i]!.cat)?.label ??
-              graph.nodes[hover.i]!.cat}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            {graph.nodes[hover.i]!.deg} conexões · {graph.nodes[hover.i]!.pubs} artigos · ramo{" "}
-            {graph.nodes[hover.i]!.cat}
-            {graph.nodes[hover.i]!.tree ? ` · ${graph.nodes[hover.i]!.tree}` : ""}
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Índice de crescimento:{" "}
-            {graph.nodes[hover.i]!.growthAvailable !== false &&
-            Number.isFinite(graph.nodes[hover.i]!.growth)
-              ? graph.nodes[hover.i]!.growth.toFixed(3)
-              : "indisponível"}
-          </p>
-        </div>
-      )}
+      <Localized
+        value={
+          region && (
+            <div
+              className="pointer-events-none absolute border border-primary bg-primary/10"
+              style={{ left: region.x, top: region.y, width: region.w, height: region.h }}
+            />
+          )
+        }
+      />
+      <Localized
+        value={
+          !onHover &&
+          hover &&
+          (!matches || matches.has(hover.i)) &&
+          graph.nodes[hover.i] && (
+            <div
+              className="pointer-events-none absolute z-10 max-w-64 rounded-md border border-border bg-popover/95 px-3 py-2 text-xs shadow-panel backdrop-blur"
+              style={{
+                left: Math.max(
+                  4,
+                  Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 300) - 264),
+                ),
+                top: Math.max(
+                  4,
+                  Math.min(hover.y + 14, (wrapRef.current?.clientHeight ?? 200) - 140),
+                ),
+              }}
+            >
+              <p className="font-display text-sm font-semibold text-foreground">
+                <Localized value={graph.nodes[hover.i]!.label} />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={graph.nodes[hover.i]!.id} />
+                <Localized value={" ·"} />
+                <Localized value={" "} />
+                <Localized
+                  value={
+                    graph.categories.find((c) => c.id === graph.nodes[hover.i]!.cat)?.label ??
+                    graph.nodes[hover.i]!.cat
+                  }
+                />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={graph.nodes[hover.i]!.deg} />
+                <Localized value={" conexões · "} />
+                <Localized value={graph.nodes[hover.i]!.pubs} />
+                <Localized value={" artigos · ramo"} />
+                <Localized value={" "} />
+                <Localized value={graph.nodes[hover.i]!.cat} />
+                <Localized
+                  value={graph.nodes[hover.i]!.tree ? ` · ${graph.nodes[hover.i]!.tree}` : ""}
+                />
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                <Localized value={" Índice de crescimento:"} />
+                <Localized value={" "} />
+                <Localized
+                  value={
+                    graph.nodes[hover.i]!.growthAvailable !== false &&
+                    Number.isFinite(graph.nodes[hover.i]!.growth)
+                      ? graph.nodes[hover.i]!.growth.toFixed(3)
+                      : "indisponível"
+                  }
+                />
+              </p>
+            </div>
+          )
+        }
+      />
     </div>
   );
 }

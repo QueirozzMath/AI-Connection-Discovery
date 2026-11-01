@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -9,6 +11,8 @@ export const Route = createFileRoute("/articles")({
   component: ArticlesPage,
 });
 function ArticlesPage() {
+  const _uiLanguage = useLanguage().language;
+
   const index = useQuery(indexQuery);
   const [from, setFrom] = useState<number | null>(null);
   const [to, setTo] = useState<number | null>(null);
@@ -16,16 +20,17 @@ function ArticlesPage() {
   if (index.isError)
     return (
       <p role="alert" className="p-6">
-        Não foi possível carregar o período.{" "}
+        <Localized value={" Não foi possível carregar o período."} />
+        <Localized value={" "} />
         <button onClick={() => index.refetch()} className="text-primary underline">
-          Tentar novamente
+          <Localized value={" Tentar novamente "} />
         </button>
       </p>
     );
   if (!index.data)
     return (
       <p role="status" className="p-6">
-        Carregando artigos…
+        <Localized value={" Carregando artigos… "} />
       </p>
     );
   const [min, max] = index.data.corpus_years;
@@ -39,50 +44,66 @@ function ArticlesPage() {
     >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Artigos</h1>
+          <h1 className="text-xl font-semibold">
+            <Localized value={"Artigos"} />
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Explore a árvore MeSH e consulte as publicações do corpus no PubMed.
+            <Localized
+              value={" Explore a árvore MeSH e consulte as publicações do corpus no PubMed. "}
+            />
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">
-            De
+            <Localized value={" De "} />
             <select
-              aria-label="Ano inicial dos artigos"
+              aria-label={t("Ano inicial dos artigos")}
               value={start}
               onChange={(e) => setFrom(Number(e.target.value))}
               className="mt-1 block rounded border border-border bg-background p-2"
             >
-              {years.map((y) => (
-                <option key={y}>{y}</option>
-              ))}
+              <Localized
+                value={years.map((y) => (
+                  <option key={y}>
+                    <Localized value={y} />
+                  </option>
+                ))}
+              />
             </select>
           </label>
           <label className="text-xs">
-            Até
+            <Localized value={" Até "} />
             <select
-              aria-label="Ano final dos artigos"
+              aria-label={t("Ano final dos artigos")}
               value={end}
               onChange={(e) => setTo(Number(e.target.value))}
               className="mt-1 block rounded border border-border bg-background p-2"
             >
-              {years
-                .filter((y) => y >= start)
-                .map((y) => (
-                  <option key={y}>{y}</option>
-                ))}
+              <Localized
+                value={years
+                  .filter((y) => y >= start)
+                  .map((y) => (
+                    <option key={y}>
+                      <Localized value={y} />
+                    </option>
+                  ))}
+              />
             </select>
           </label>
           <label className="text-xs">
-            Combinar descritores
+            <Localized value={" Combinar descritores "} />
             <select
-              aria-label="Combinar descritores"
+              aria-label={t("Combinar descritores")}
               value={operator}
               onChange={(e) => setOperator(e.target.value as "and" | "or")}
               className="mt-1 block rounded border border-border bg-background p-2"
             >
-              <option value="or">OU · qualquer descritor</option>
-              <option value="and">E · todos os descritores</option>
+              <option value="or">
+                <Localized value={"OU · qualquer descritor"} />
+              </option>
+              <option value="and">
+                <Localized value={"E · todos os descritores"} />
+              </option>
             </select>
           </label>
         </div>

@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "@tanstack/react-router";
 import { Button } from "./ui/button";
@@ -113,6 +115,8 @@ const steps = [
   },
 ] as const;
 export function GuidedTour({ onClose }: { onClose: () => void }) {
+  const _uiLanguage = useLanguage().language;
+
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
   const [found, setFound] = useState(false);
@@ -153,42 +157,53 @@ export function GuidedTour({ onClose }: { onClose: () => void }) {
   }, [item]);
   return (
     <aside
-      aria-label="Tour interativo"
+      aria-label={t("Tour interativo")}
       className="fixed z-[60] bottom-5 right-5 w-[min(480px,calc(100vw-40px))] max-h-[75vh] overflow-y-auto rounded-xl border border-primary bg-background p-5 shadow-2xl"
     >
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>
-          APRENDA EXPLORANDO · {step + 1}/{steps.length}
+          <Localized value={" APRENDA EXPLORANDO · "} />
+          <Localized value={step + 1} />
+          <Localized value={"/"} />
+          <Localized value={steps.length} />
         </span>
-        <button aria-label="Encerrar tour" onClick={onClose}>
-          ✕
+        <button aria-label={t("Encerrar tour")} onClick={onClose}>
+          <Localized value={" ✕ "} />
         </button>
       </div>
-      <h2 className="font-display font-semibold mt-2">{item.title}</h2>
-      <p className="text-sm text-muted-foreground mt-2">{item.text}</p>
+      <h2 className="font-display font-semibold mt-2">
+        <Localized value={item.title} />
+      </h2>
+      <p className="text-sm text-muted-foreground mt-2">
+        <Localized value={item.text} />
+      </p>
       <p role="status" className="text-xs text-primary mt-3">
-        {done
-          ? "✓ Você interagiu com esta etapa."
-          : found
-            ? "Experimente o controle destacado."
-            : "Abra a seção indicada ou use Continuar para ler a próxima explicação."}
+        <Localized
+          value={
+            done
+              ? "✓ Você interagiu com esta etapa."
+              : found
+                ? "Experimente o controle destacado."
+                : "Abra a seção indicada ou use Continuar para ler a próxima explicação."
+          }
+        />
       </p>
       <div className="flex justify-between mt-4">
         <Button size="sm" variant="ghost" disabled={!step} onClick={() => setStep((s) => s - 1)}>
-          Voltar
+          <Localized value={" Voltar "} />
         </Button>
         <Button
           size="sm"
           variant="ghost"
           onClick={() => (step === steps.length - 1 ? onClose() : setStep((s) => s + 1))}
         >
-          Pular
+          <Localized value={" Pular "} />
         </Button>
         <Button
           size="sm"
           onClick={() => (step === steps.length - 1 ? onClose() : setStep((s) => s + 1))}
         >
-          {step === steps.length - 1 ? "Concluir" : "Continuar"}
+          <Localized value={step === steps.length - 1 ? "Concluir" : "Continuar"} />
         </Button>
       </div>
     </aside>

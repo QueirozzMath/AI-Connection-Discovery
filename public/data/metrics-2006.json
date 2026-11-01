@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-05T01:05:51Z",
+ "generated_at": "2026-10-11T17:48:49Z",
  "source": "PubMed E-utilities (MEDLINE, amostra estratificada real)",
  "cutoff_year": 2006,
  "train_cutoff": 2000,
@@ -7,301 +7,301 @@
   2007,
   2025
  ],
- "n_articles": 67560,
+ "n_articles": 105051,
  "graph": {
-  "nodes": 3271,
-  "edges_pre": 168773,
-  "edges_post_new": 56298,
-  "density": 0.031557651009660466
+  "nodes": 3576,
+  "edges_pre": 237125,
+  "edges_post_new": 80805,
+  "density": 0.03709657233147166
  },
  "labels": {
   "n": 120000,
-  "positives": 1586,
-  "rate": 0.013216666666666666
+  "positives": 2369,
+  "rate": 0.019741666666666668
  },
  "model": {
   "name": "Gradient boosting sobre features multiplex MeSH",
-  "auc": 0.8103354297959596,
+  "auc": 0.8751396783896543,
   "auc_ci95": [
-   0.8000934286533379,
-   0.821378820981403
+   0.8686686994709378,
+   0.8800583680941625
   ],
-  "auc_bootstrap_mean": 0.8104251343990694,
+  "auc_bootstrap_mean": 0.8749281649685827,
   "permutation_p": 0.0033222591362126247,
   "feature_importance": [
    {
     "feature": "common_neighbors",
-    "importance": 0.12044951319694519
+    "importance": 0.10023384668301621
    },
    {
     "feature": "adamic_adar",
-    "importance": 0.0479920357465744
+    "importance": 0.05009535095143891
    },
    {
     "feature": "resource_allocation",
-    "importance": 0.05120236799120903
+    "importance": 0.13311439114152918
    },
    {
     "feature": "jaccard",
-    "importance": 0.08586210012435913
+    "importance": 0.12518071767008762
    },
    {
     "feature": "pref_attachment",
-    "importance": 0.22972926497459412
+    "importance": 0.18862922980162913
    },
    {
     "feature": "cosine_profile",
-    "importance": 0.07895734906196594
+    "importance": 0.05065452830436595
    },
    {
     "feature": "bridge_strength",
-    "importance": 0.09447240829467773
+    "importance": 0.012613289733147492
    },
    {
     "feature": "bridge_max",
-    "importance": 0.027849504724144936
+    "importance": 0.05458979998379753
    },
    {
     "feature": "deg_ratio",
-    "importance": 0.0564451590180397
+    "importance": 0.08854048443469144
    },
    {
     "feature": "same_branch",
-    "importance": 0.0015352866612374783
+    "importance": 0.024492545207202218
    },
    {
     "feature": "tree_distance",
-    "importance": 0.02184382826089859
+    "importance": 0.026362626331608335
    },
    {
     "feature": "growth_min",
-    "importance": 0.08973679691553116
+    "importance": 0.09622733851061416
    },
    {
     "feature": "growth_max",
-    "importance": 0.08115734159946442
+    "importance": 0.03699065833775201
    },
    {
     "feature": "drug_disease_pair",
-    "importance": 0.012767087668180466
+    "importance": 0.012275192909119765
    }
   ]
  },
  "model_comparison": [
   {
-   "name": "Resource allocation",
-   "auc": 0.8235422599117963
-  },
-  {
    "name": "Multiplex MeSH (GBM)",
-   "auc": 0.8103354297959596
+   "auc": 0.8751396783896543
   },
   {
-   "name": "Adamic-Adar",
-   "auc": 0.8086832392032306
-  },
-  {
-   "name": "Vizinhos comuns",
-   "auc": 0.7991896380772432
+   "name": "Resource allocation",
+   "auc": 0.8671077504569877
   },
   {
    "name": "Regressao logistica multiplex",
-   "auc": 0.7795225856124379
+   "auc": 0.8651539404947265
+  },
+  {
+   "name": "Adamic-Adar",
+   "auc": 0.8619910225808296
+  },
+  {
+   "name": "Vizinhos comuns",
+   "auc": 0.8582926392162534
   },
   {
    "name": "Preferential attachment",
-   "auc": 0.7236932567425237
+   "auc": 0.773156273695437
   },
   {
    "name": "Cosseno de perfis",
-   "auc": 0.6686837027701409
+   "auc": 0.7333376493438843
   },
   {
    "name": "Jaccard",
-   "auc": 0.6668567427665404
+   "auc": 0.7324693485709342
   }
  ],
  "delong_vs_best_baseline": {
-  "auc_a": 0.8103354297959596,
-  "auc_b": 0.8235422599117963,
-  "z": -3.6144058911476136,
-  "p": 0.00030103713634315187
+  "auc_a": 0.8751396783896543,
+  "auc_b": 0.8671077504569877,
+  "z": 4.223371338748167,
+  "p": 2.4067478855981013e-05
  },
  "precision_at_k": [
   {
    "k": 10,
-   "precision": 0.3,
-   "recall": 0.0018915510718789407
+   "precision": 0.6,
+   "recall": 0.002532714225411566
   },
   {
    "k": 25,
    "precision": 0.4,
-   "recall": 0.006305170239596469
+   "recall": 0.004221190375685944
   },
   {
    "k": 50,
-   "precision": 0.38,
-   "recall": 0.01197982345523329
+   "precision": 0.4,
+   "recall": 0.008442380751371888
   },
   {
    "k": 100,
    "precision": 0.34,
-   "recall": 0.021437578814627996
+   "recall": 0.014352047277332207
   },
   {
    "k": 200,
-   "precision": 0.25,
-   "recall": 0.031525851197982346
+   "precision": 0.325,
+   "recall": 0.027437737441958633
   },
   {
    "k": 500,
-   "precision": 0.178,
-   "recall": 0.056116015132408575
+   "precision": 0.262,
+   "recall": 0.05529759392148586
   },
   {
    "k": 1000,
-   "precision": 0.145,
-   "recall": 0.0914249684741488
+   "precision": 0.235,
+   "recall": 0.09919797382861967
   }
  ],
  "calibration": {
-  "brier": 0.013343625651434581,
+  "brier": 0.018795965013609264,
   "bins": [
    {
-    "p_pred": 0.010027788519924767,
-    "p_obs": 0.011065371595760968,
-    "n": 117574
+    "p_pred": 0.007158498810129568,
+    "p_obs": 0.01716517367613071,
+    "n": 118554
    },
    {
-    "p_pred": 0.1340411924829956,
-    "p_obs": 0.09860191317144959,
-    "n": 1359
+    "p_pred": 0.12716560320886303,
+    "p_obs": 0.2052313883299799,
+    "n": 994
    },
    {
-    "p_pred": 0.24660435150829116,
-    "p_obs": 0.10504201680672269,
-    "n": 476
+    "p_pred": 0.23613635151899992,
+    "p_obs": 0.18181818181818182,
+    "n": 77
    },
    {
-    "p_pred": 0.34209893984952555,
-    "p_obs": 0.1346153846153846,
-    "n": 260
+    "p_pred": 0.35864613436130177,
+    "p_obs": 0.35294117647058826,
+    "n": 34
    },
    {
-    "p_pred": 0.44588997008826176,
-    "p_obs": 0.13861386138613863,
+    "p_pred": 0.4563056325167748,
+    "p_obs": 0.21052631578947367,
+    "n": 57
+   },
+   {
+    "p_pred": 0.537702126670456,
+    "p_obs": 0.34615384615384615,
+    "n": 52
+   },
+   {
+    "p_pred": 0.6613536209680297,
+    "p_obs": 0.3465346534653465,
     "n": 101
    },
    {
-    "p_pred": 0.5433643739536717,
-    "p_obs": 0.10344827586206896,
-    "n": 58
+    "p_pred": 0.7411377366034451,
+    "p_obs": 0.17142857142857143,
+    "n": 35
    },
    {
-    "p_pred": 0.649694412270084,
-    "p_obs": 0.13793103448275862,
-    "n": 29
-   },
-   {
-    "p_pred": 0.7598688687988917,
-    "p_obs": 0.19148936170212766,
+    "p_pred": 0.8555303567473893,
+    "p_obs": 0.2765957446808511,
     "n": 47
    },
    {
-    "p_pred": 0.845920529433634,
-    "p_obs": 0.35294117647058826,
-    "n": 85
-   },
-   {
-    "p_pred": 0.9178695368318447,
-    "p_obs": 0.2727272727272727,
-    "n": 11
+    "p_pred": 0.9215101117653774,
+    "p_obs": 0.40816326530612246,
+    "n": 49
    }
   ]
  },
  "powerlaw": {
-  "alpha": 1.2989027929296086,
+  "alpha": 1.274493858156144,
   "xmin": 3.0,
-  "loglik_ratio_vs_lognormal": -3263.959393130266,
+  "loglik_ratio_vs_lognormal": -4124.557628272996,
   "p": 0.0
  },
  "confirmations": {
   "n_predicted": 500,
-  "n_confirmed": 89,
-  "rate": 0.178,
-  "median_lead_time": 6.0,
-  "mean_lead_time": 7.247191011235955,
+  "n_confirmed": 131,
+  "rate": 0.262,
+  "median_lead_time": 5.0,
+  "mean_lead_time": 5.984732824427481,
   "lead_time_histogram": [
    {
     "years": 1,
-    "n": 17
+    "n": 19
    },
    {
     "years": 2,
-    "n": 3
+    "n": 18
    },
    {
     "years": 3,
-    "n": 9
+    "n": 12
    },
    {
     "years": 4,
-    "n": 7
+    "n": 14
    },
    {
     "years": 5,
-    "n": 3
+    "n": 10
    },
    {
     "years": 6,
-    "n": 6
+    "n": 9
    },
    {
     "years": 7,
-    "n": 6
+    "n": 8
    },
    {
     "years": 8,
-    "n": 3
+    "n": 5
    },
    {
     "years": 9,
-    "n": 4
-   },
-   {
-    "years": 10,
-    "n": 2
-   },
-   {
-    "years": 11,
-    "n": 4
-   },
-   {
-    "years": 12,
     "n": 7
    },
    {
+    "years": 10,
+    "n": 4
+   },
+   {
+    "years": 11,
+    "n": 9
+   },
+   {
+    "years": 12,
+    "n": 4
+   },
+   {
     "years": 13,
-    "n": 5
+    "n": 3
    },
    {
     "years": 14,
-    "n": 5
+    "n": 2
    },
    {
     "years": 15,
-    "n": 3
+    "n": 2
    },
    {
     "years": 16,
     "n": 1
    },
    {
-    "years": 17,
+    "years": 18,
     "n": 2
    },
    {
-    "years": 18,
+    "years": 19,
     "n": 2
    }
   ]

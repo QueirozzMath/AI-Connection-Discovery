@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { Check } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -14,14 +16,16 @@ const families = [
   ["Violeta", "#ddd6fe", "#a78bfa", "#7c3aed", "#5b21b6"],
 ];
 export function AccentColorPicker() {
+  const _uiLanguage = useLanguage().language;
+
   const { accent, setAccent } = useTheme();
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label="Escolher cor da plataforma"
-          title="Escolher cor da plataforma"
+          aria-label={t("Escolher cor da plataforma")}
+          title={t("Escolher cor da plataforma")}
           className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           <span className="size-3 rounded-full bg-primary shadow-glow" />
@@ -30,40 +34,54 @@ export function AccentColorPicker() {
       <PopoverContent
         align="start"
         className="w-[min(25rem,calc(100vw-2rem))] space-y-4"
-        aria-label="Cores da plataforma"
+        aria-label={t("Cores da plataforma")}
       >
         <div>
-          <h2 className="text-sm font-semibold">Cores da plataforma</h2>
+          <h2 className="text-sm font-semibold">
+            <Localized value={"Cores da plataforma"} />
+          </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Escolha a cor dos textos, botões e destaques. A preferência fica salva neste navegador.
+            <Localized
+              value={
+                " Escolha a cor dos textos, botões e destaques. A preferência fica salva neste navegador. "
+              }
+            />
           </p>
         </div>
-        <div className="grid grid-cols-9 gap-1" role="group" aria-label="Tabela de cores">
-          {families.map(([name, ...colors]) => (
-            <div key={name} className="space-y-1">
-              {colors.map((color, i) => (
-                <button
-                  key={color}
-                  type="button"
-                  aria-label={`${name}, tom ${i + 1} (${color})`}
-                  aria-pressed={accent === color}
-                  title={`${name} · ${color}`}
-                  onClick={() => setAccent(color)}
-                  className="relative flex h-9 w-full items-center justify-center rounded-sm border border-foreground/20 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                  style={{ backgroundColor: color }}
-                >
-                  {accent === color && (
-                    <Check className="size-4 rounded bg-background text-foreground" />
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
+        <div className="grid grid-cols-9 gap-1" role="group" aria-label={t("Tabela de cores")}>
+          <Localized
+            value={families.map(([name, ...colors]) => (
+              <div key={name} className="space-y-1">
+                <Localized
+                  value={colors.map((color, i) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={t(`${name}, tom ${i + 1} (${color})`)}
+                      aria-pressed={accent === color}
+                      title={t(`${name} · ${color}`)}
+                      onClick={() => setAccent(color)}
+                      className="relative flex h-9 w-full items-center justify-center rounded-sm border border-foreground/20 focus-visible:z-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      style={{ backgroundColor: color }}
+                    >
+                      <Localized
+                        value={
+                          accent === color && (
+                            <Check className="size-4 rounded bg-background text-foreground" />
+                          )
+                        }
+                      />
+                    </button>
+                  ))}
+                />
+              </div>
+            ))}
+          />
         </div>
         <label className="flex items-center justify-between gap-3 text-sm">
-          Cor personalizada
+          <Localized value={" Cor personalizada "} />
           <input
-            aria-label="Cor personalizada"
+            aria-label={t("Cor personalizada")}
             type="color"
             value={accent || "#5ad1e6"}
             onChange={(e) => setAccent(e.target.value)}
@@ -71,13 +89,15 @@ export function AccentColorPicker() {
           />
         </label>
         <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
-          <span className="font-mono text-muted-foreground">{accent || "Cor original"}</span>
+          <span className="font-mono text-muted-foreground">
+            <Localized value={accent || "Cor original"} />
+          </span>
           <button
             type="button"
             onClick={() => setAccent("")}
             className="min-h-9 rounded px-2 text-primary underline focus-visible:outline-2 focus-visible:outline-ring"
           >
-            Restaurar padrão
+            <Localized value={" Restaurar padrão "} />
           </button>
         </div>
       </PopoverContent>
