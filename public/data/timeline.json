@@ -2,67 +2,67 @@
  "items": [
   {
    "cutoff_year": 2006,
-   "auc": 0.8103354297959596,
+   "auc": 0.8751396783896543,
    "auc_ci95": [
-    0.8000934286533379,
-    0.821378820981403
+    0.8686686994709378,
+    0.8800583680941625
    ],
    "n_predicted": 500,
-   "n_confirmed": 89,
-   "rate": 0.178,
-   "median_lead_time": 6.0,
-   "mean_lead_time": 7.247191011235955,
-   "precision_at_50": 0.38,
-   "positives_rate": 0.013216666666666666,
-   "nodes": 3271
+   "n_confirmed": 131,
+   "rate": 0.262,
+   "median_lead_time": 5.0,
+   "mean_lead_time": 5.984732824427481,
+   "precision_at_50": 0.4,
+   "positives_rate": 0.019741666666666668,
+   "nodes": 3576
   },
   {
    "cutoff_year": 2010,
-   "auc": 0.8093463306262497,
+   "auc": 0.8519906577378258,
    "auc_ci95": [
-    0.7953255559349427,
-    0.824216934799502
+    0.8426936274657988,
+    0.8602235485749323
    ],
    "n_predicted": 500,
-   "n_confirmed": 39,
-   "rate": 0.078,
-   "median_lead_time": 4.0,
-   "mean_lead_time": 4.897435897435898,
-   "precision_at_50": 0.08,
-   "positives_rate": 0.007083333333333333,
-   "nodes": 3622
+   "n_confirmed": 72,
+   "rate": 0.144,
+   "median_lead_time": 6.0,
+   "mean_lead_time": 6.375,
+   "precision_at_50": 0.1,
+   "positives_rate": 0.010466666666666668,
+   "nodes": 3953
   },
   {
    "cutoff_year": 2014,
-   "auc": 0.8451053322166387,
+   "auc": 0.8392200770047142,
    "auc_ci95": [
-    0.8208748293525648,
-    0.8630696110555264
+    0.8228952585314866,
+    0.855951902799485
    ],
    "n_predicted": 500,
-   "n_confirmed": 28,
-   "rate": 0.056,
-   "median_lead_time": 3.0,
-   "mean_lead_time": 3.642857142857143,
-   "precision_at_50": 0.12,
-   "positives_rate": 0.005,
-   "nodes": 3979
+   "n_confirmed": 32,
+   "rate": 0.064,
+   "median_lead_time": 4.0,
+   "mean_lead_time": 4.84375,
+   "precision_at_50": 0.04,
+   "positives_rate": 0.005266666666666667,
+   "nodes": 4290
   },
   {
    "cutoff_year": 2018,
-   "auc": 0.84818023350662,
+   "auc": 0.8080014857176003,
    "auc_ci95": [
-    0.8183573092895948,
-    0.8800373097935271
+    0.7744104996495061,
+    0.8351538336957789
    ],
    "n_predicted": 500,
-   "n_confirmed": 8,
-   "rate": 0.016,
-   "median_lead_time": 1.5,
-   "mean_lead_time": 1.75,
-   "precision_at_50": 0.04,
-   "positives_rate": 0.00195,
-   "nodes": 4292
+   "n_confirmed": 16,
+   "rate": 0.032,
+   "median_lead_time": 3.0,
+   "mean_lead_time": 3.125,
+   "precision_at_50": 0.02,
+   "positives_rate": 0.0019,
+   "nodes": 4657
   }
  ]
 }

@@ -63,7 +63,8 @@ function mount(name, props) {
         if (key === "arc") return (...args) => arcs.push(args);
         if (key === "fillText") return (text) => labels.push(text);
         if (key === "lineTo") return (...args) => lines.push(args);
-        if (key === "stroke") return () => strokes.push({ color: styles.strokeStyle, alpha: styles.globalAlpha });
+        if (key === "stroke")
+          return () => strokes.push({ color: styles.strokeStyle, alpha: styles.globalAlpha });
         if (key === "clearRect")
           return () => {
             arcs.length = 0;
@@ -73,7 +74,10 @@ function mount(name, props) {
           };
         return () => {};
       },
-      set: (_, key, value) => { styles[key] = value; return true; },
+      set: (_, key, value) => {
+        styles[key] = value;
+        return true;
+      },
     },
   );
   const canvas = { width: 0, height: 0, getContext: () => ctx };
@@ -94,15 +98,22 @@ function mount(name, props) {
   vm.runInNewContext(js, {
     exports,
     require: (id) =>
-      id === "react"
-        ? react
-        : id === "@/lib/science-data"
-          ? { catColor: (category) => category === "C" ? "#ff0000" : category === "D" ? "#00ff00" : "#ffffff" }
-          : id === "@/lib/map-navigation"
-            ? require("../src/lib/map-navigation.ts")
-            : id === "@/lib/map-layers"
-              ? require("../src/lib/map-layers.ts")
-              : require(id),
+      id === "@/lib/ui-language"
+        ? { t: (v) => v, getLocale: () => "pt-BR" }
+        : id === "@/components/LanguageProvider"
+          ? { useLanguage: () => ({ language: "pt" }), Localized: ({ value }) => value }
+          : id === "react"
+            ? react
+            : id === "@/lib/science-data"
+              ? {
+                  catColor: (category) =>
+                    category === "C" ? "#ff0000" : category === "D" ? "#00ff00" : "#ffffff",
+                }
+              : id === "@/lib/map-navigation"
+                ? require("../src/lib/map-navigation.ts")
+                : id === "@/lib/map-layers"
+                  ? require("../src/lib/map-layers.ts")
+                  : require(id),
     window: { devicePixelRatio: 1 },
     ResizeObserver: class {
       observe() {}
@@ -252,8 +263,16 @@ for (const layout of ["force", "hierarchy"]) {
     const selected = 0;
     const edges = graph.edges.filter(([a, b]) => a === selected || b === selected);
     const allowed = new Set([selected, ...edges.flatMap(([a, b]) => [a, b]).slice(0, 16)]);
-    const expected = graph.edges.filter(([a, b]) => allowed.has(a) && allowed.has(b) && (a === selected || b === selected));
-    const map = mount("ScienceMap", { layout, matches: allowed, selected, showEdges: false, showUnselected: false });
+    const expected = graph.edges.filter(
+      ([a, b]) => allowed.has(a) && allowed.has(b) && (a === selected || b === selected),
+    );
+    const map = mount("ScienceMap", {
+      layout,
+      matches: allowed,
+      selected,
+      showEdges: false,
+      showUnselected: false,
+    });
     assert.equal(map.lines.length, expected.length);
     assert.ok(map.lines.length > 0);
     map.update({ selected: null });

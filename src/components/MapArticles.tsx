@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { articleNetwork } from "@/lib/article-network";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -7,6 +9,8 @@ import { catColor, num } from "@/lib/science-data";
 
 /** Explore one actual descriptor at a time; all articles remain available in the list. */
 function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
+  const _uiLanguage = useLanguage().language;
+
   const descriptors = useMemo(() => {
     const counts = new Map<string, { label: string; category: string; count: number }>();
     for (const article of articles)
@@ -36,7 +40,12 @@ function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
     setFocusedMesh(null);
   }, [articles, chosen]);
   const network = useMemo(() => articleNetwork(batch), [articles, offset, chosen]);
-  if (!articles.length) return <p>Nenhuma relação artigo–MeSH nesta página.</p>;
+  if (!articles.length)
+    return (
+      <p>
+        <Localized value={"Nenhuma relação artigo–MeSH nesta página."} />
+      </p>
+    );
   const points = batch.map((article, i) => ({
     article,
     x: network.positions[i * 2]!,
@@ -46,7 +55,7 @@ function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
   return (
     <div className="min-w-0 space-y-3">
       <label className="block font-medium" htmlFor="article-network-term">
-        Explorar um descritor
+        <Localized value={" Explorar um descritor "} />
       </label>
       <select
         id="article-network-term"
@@ -54,149 +63,178 @@ function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
         value={chosen}
         onChange={(e) => setChosen(e.target.value)}
       >
-        <option value="">Todos os descritores desta página</option>
-        {descriptors.map(([id, m]) => (
-          <option key={id} value={id}>
-            {m.label} · {m.count} artigos nesta página
-          </option>
-        ))}
+        <option value="">
+          <Localized value={"Todos os descritores desta página"} />
+        </option>
+        <Localized
+          value={descriptors.map(([id, m]) => (
+            <option key={id} value={id}>
+              <Localized value={m.label} />
+              <Localized value={" · "} />
+              <Localized value={m.count} />
+              <Localized value={" artigos nesta página "} />
+            </option>
+          ))}
+        />
       </select>
       <p className="text-[11px] text-muted-foreground">
-        Pontos numerados são artigos; pontos coloridos com nome são termos MeSH distintos. Selecione
-        qualquer elemento para destacar suas ligações reais.
+        <Localized
+          value={
+            " Pontos numerados são artigos; pontos coloridos com nome são termos MeSH distintos. Selecione qualquer elemento para destacar suas ligações reais. "
+          }
+        />
       </p>
       <svg
         viewBox="0 0 360 330"
         className="block w-full rounded-xl border border-border bg-background/60"
         role="group"
-        aria-label="Rede de artigos e descritores MeSH distintos"
+        aria-label={t("Rede de artigos e descritores MeSH distintos")}
       >
-        {network.links.map(([a, b]) => {
-          const term = network.mesh[b - batch.length]!;
-          const match = selectedArticle
-            ? batch[a]!.pmid === selectedArticle
-            : focusedMesh
-              ? term.id === focusedMesh
-              : true;
-          return (
-            <line
-              key={`${a}:${b}`}
-              x1={network.positions[a * 2]}
-              y1={network.positions[a * 2 + 1]}
-              x2={network.positions[b * 2]}
-              y2={network.positions[b * 2 + 1]}
-              stroke={catColor(term.category)}
-              opacity={match ? 0.45 : 0.035}
-              strokeWidth={match ? 1.2 : 0.6}
-            />
-          );
-        })}
-        {network.mesh.map((m, i) => {
-          const index = batch.length + i,
-            x = network.positions[index * 2]!,
-            y = network.positions[index * 2 + 1]!;
-          return (
+        <Localized
+          value={network.links.map(([a, b]) => {
+            const term = network.mesh[b - batch.length]!;
+            const match = selectedArticle
+              ? batch[a]!.pmid === selectedArticle
+              : focusedMesh
+                ? term.id === focusedMesh
+                : true;
+            return (
+              <line
+                key={`${a}:${b}`}
+                x1={network.positions[a * 2]}
+                y1={network.positions[a * 2 + 1]}
+                x2={network.positions[b * 2]}
+                y2={network.positions[b * 2 + 1]}
+                stroke={catColor(term.category)}
+                opacity={match ? 0.45 : 0.035}
+                strokeWidth={match ? 1.2 : 0.6}
+              />
+            );
+          })}
+        />
+        <Localized
+          value={network.mesh.map((m, i) => {
+            const index = batch.length + i,
+              x = network.positions[index * 2]!,
+              y = network.positions[index * 2 + 1]!;
+            return (
+              <g
+                key={m.id}
+                role="button"
+                tabIndex={0}
+                className="group cursor-pointer focus:outline-none"
+                aria-label={t(`Termo MeSH: ${m.label}, ${m.count} artigos visíveis`)}
+                onClick={() => {
+                  setFocusedMesh(focusedMesh === m.id ? null : m.id);
+                  setSelectedArticle(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setFocusedMesh(m.id);
+                    setSelectedArticle(null);
+                  }
+                }}
+              >
+                <title>
+                  <Localized value={m.label} />
+                  <Localized value={" · "} />
+                  <Localized value={m.id} />
+                </title>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={focusedMesh === m.id ? 9 : 6}
+                  fill={catColor(m.category)}
+                  stroke="var(--background)"
+                  strokeWidth={2}
+                  className="group-focus-visible:stroke-white"
+                />
+                <text
+                  x={x > 240 ? x - 9 : x + 9}
+                  y={y + 3}
+                  textAnchor={x > 240 ? "end" : "start"}
+                  fontSize={8.5}
+                  fill="currentColor"
+                  paintOrder="stroke"
+                  stroke="var(--background)"
+                  strokeWidth={3}
+                >
+                  <Localized value={m.label.length > 17 ? m.label.slice(0, 16) + "…" : m.label} />
+                </text>
+              </g>
+            );
+          })}
+        />
+        <Localized
+          value={points.map(({ article, x, y, number }) => (
             <g
-              key={m.id}
+              key={article.pmid}
               role="button"
               tabIndex={0}
+              aria-label={t(`Artigo ${number}: ${article.title ?? article.pmid}`)}
               className="group cursor-pointer focus:outline-none"
-              aria-label={`Termo MeSH: ${m.label}, ${m.count} artigos visíveis`}
               onClick={() => {
-                setFocusedMesh(focusedMesh === m.id ? null : m.id);
-                setSelectedArticle(null);
+                setSelectedArticle(article.pmid);
+                setFocusedMesh(null);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setFocusedMesh(m.id);
-                  setSelectedArticle(null);
+                  setSelectedArticle(article.pmid);
+                  setFocusedMesh(null);
                 }
               }}
             >
               <title>
-                {m.label} · {m.id}
+                <Localized value={article.title ?? article.pmid} />
               </title>
               <circle
                 cx={x}
                 cy={y}
-                r={focusedMesh === m.id ? 9 : 6}
-                fill={catColor(m.category)}
-                stroke="var(--background)"
-                strokeWidth={2}
-                className="group-focus-visible:stroke-white"
+                r={selectedArticle === article.pmid ? 14 : 11}
+                fill={selectedArticle === article.pmid ? "var(--primary)" : "var(--foreground)"}
+                stroke="var(--border)"
+                strokeWidth={1.2}
+                className="group-focus-visible:stroke-white group-focus-visible:stroke-[3px]"
               />
-              <text
-                x={x > 240 ? x - 9 : x + 9}
-                y={y + 3}
-                textAnchor={x > 240 ? "end" : "start"}
-                fontSize={8.5}
-                fill="currentColor"
-                paintOrder="stroke"
-                stroke="var(--background)"
-                strokeWidth={3}
-              >
-                {m.label.length > 17 ? m.label.slice(0, 16) + "…" : m.label}
+              <text x={x} y={y + 3.5} textAnchor="middle" fill="var(--background)" fontSize={10}>
+                <Localized value={number} />
               </text>
             </g>
-          );
-        })}
-        {points.map(({ article, x, y, number }) => (
-          <g
-            key={article.pmid}
-            role="button"
-            tabIndex={0}
-            aria-label={`Artigo ${number}: ${article.title ?? article.pmid}`}
-            className="group cursor-pointer focus:outline-none"
-            onClick={() => {
-              setSelectedArticle(article.pmid);
-              setFocusedMesh(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setSelectedArticle(article.pmid);
-                setFocusedMesh(null);
-              }
-            }}
-          >
-            <title>{article.title ?? article.pmid}</title>
-            <circle
-              cx={x}
-              cy={y}
-              r={selectedArticle === article.pmid ? 14 : 11}
-              fill={selectedArticle === article.pmid ? "var(--primary)" : "var(--foreground)"}
-              stroke="var(--border)"
-              strokeWidth={1.2}
-              className="group-focus-visible:stroke-white group-focus-visible:stroke-[3px]"
-            />
-            <text x={x} y={y + 3.5} textAnchor="middle" fill="var(--background)" fontSize={10}>
-              {number}
-            </text>
-          </g>
-        ))}
+          ))}
+        />
       </svg>
-      {focusedMesh && network.mesh.find((m) => m.id === focusedMesh) && (
-        <div className="rounded border border-border p-2">
-          <p className="font-semibold">{network.mesh.find((m) => m.id === focusedMesh)!.label}</p>
-          <p className="text-muted-foreground">
-            {focusedMesh} · {network.mesh.find((m) => m.id === focusedMesh)!.count} artigos nesta
-            rede
-          </p>
-          <button
-            className="mt-1 text-primary underline"
-            onClick={() => {
-              setChosen(focusedMesh);
-              setFocusedMesh(null);
-            }}
-          >
-            Explorar artigos deste termo
-          </button>
-          <button className="ml-3 underline" onClick={() => setFocusedMesh(null)}>
-            Limpar destaque
-          </button>
-        </div>
-      )}
+      <Localized
+        value={
+          focusedMesh &&
+          network.mesh.find((m) => m.id === focusedMesh) && (
+            <div className="rounded border border-border p-2">
+              <p className="font-semibold">
+                <Localized value={network.mesh.find((m) => m.id === focusedMesh)!.label} />
+              </p>
+              <p className="text-muted-foreground">
+                <Localized value={focusedMesh} />
+                <Localized value={" · "} />
+                <Localized value={network.mesh.find((m) => m.id === focusedMesh)!.count} />
+                <Localized value={" artigos nesta rede "} />
+              </p>
+              <button
+                className="mt-1 text-primary underline"
+                onClick={() => {
+                  setChosen(focusedMesh);
+                  setFocusedMesh(null);
+                }}
+              >
+                <Localized value={" Explorar artigos deste termo "} />
+              </button>
+              <button className="ml-3 underline" onClick={() => setFocusedMesh(null)}>
+                <Localized value={" Limpar destaque "} />
+              </button>
+            </div>
+          )
+        }
+      />
       <div className="flex items-center justify-between text-[11px] text-muted-foreground">
         <button
           className="rounded border border-border px-2 py-1 disabled:opacity-40"
@@ -206,10 +244,14 @@ function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
             setSelectedArticle(null);
           }}
         >
-          ← Anteriores
+          <Localized value={" ← Anteriores "} />
         </button>
         <span>
-          {offset + 1}–{offset + batch.length} de {linked.length}
+          <Localized value={offset + 1} />
+          <Localized value={"–"} />
+          <Localized value={offset + batch.length} />
+          <Localized value={" de "} />
+          <Localized value={linked.length} />
         </span>
         <button
           className="rounded border border-border px-2 py-1 disabled:opacity-40"
@@ -219,54 +261,73 @@ function ArticleMeshNetwork({ articles }: { articles: MapArticle[] }) {
             setSelectedArticle(null);
           }}
         >
-          Mais →
+          <Localized value={" Mais → "} />
         </button>
       </div>
       <div className="max-h-72 space-y-2 overflow-y-auto">
-        {(selected ? points.filter((p) => p.article.pmid === selected.pmid) : points).map(
-          ({ article, number }) => (
-            <div key={article.pmid} className="rounded-lg border border-border bg-background p-3">
-              <div className="mb-1 flex gap-2 text-[10px] text-muted-foreground">
-                <span className="font-semibold text-primary">
-                  {number.toString().padStart(2, "0")}
-                </span>
-                <span>
-                  {article.year} · PMID {article.pmid}
-                </span>
-              </div>
-              <a
-                className="block text-xs font-medium leading-relaxed text-primary hover:underline"
-                href={`https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {article.title ?? `Artigo ${article.pmid}`} ↗
-              </a>
-              {selected && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {article.mesh.map((m) => (
-                    <button
-                      key={m.id}
-                      className="rounded-full border border-border px-2 py-1 text-[10px] hover:bg-secondary"
-                      onClick={() => setChosen(m.id)}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+        <Localized
+          value={(selected ? points.filter((p) => p.article.pmid === selected.pmid) : points).map(
+            ({ article, number }) => (
+              <div key={article.pmid} className="rounded-lg border border-border bg-background p-3">
+                <div className="mb-1 flex gap-2 text-[10px] text-muted-foreground">
+                  <span className="font-semibold text-primary">
+                    <Localized value={number.toString().padStart(2, "0")} />
+                  </span>
+                  <span>
+                    <Localized value={article.year} />
+                    <Localized value={" · PMID "} />
+                    <Localized value={article.pmid} />
+                  </span>
                 </div>
-              )}
-            </div>
-          ),
-        )}
+                <a
+                  className="block text-xs font-medium leading-relaxed text-primary hover:underline"
+                  href={`https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Localized value={article.title ?? `Artigo ${article.pmid}`} />
+                  <Localized value={" ↗ "} />
+                </a>
+                <Localized
+                  value={
+                    selected && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <Localized
+                          value={article.mesh.map((m) => (
+                            <button
+                              key={m.id}
+                              className="rounded-full border border-border px-2 py-1 text-[10px] hover:bg-secondary"
+                              onClick={() => setChosen(m.id)}
+                            >
+                              <Localized value={m.label} />
+                            </button>
+                          ))}
+                        />
+                      </div>
+                    )
+                  }
+                />
+              </div>
+            ),
+          )}
+        />
       </div>
-      {selected && (
-        <button className="text-primary underline" onClick={() => setSelectedArticle(null)}>
-          Mostrar todos os títulos desta rede
-        </button>
-      )}
+      <Localized
+        value={
+          selected && (
+            <button className="text-primary underline" onClick={() => setSelectedArticle(null)}>
+              <Localized value={" Mostrar todos os títulos desta rede "} />
+            </button>
+          )
+        }
+      />
       <p className="text-[10px] text-muted-foreground">
-        Até 18 descritores distintos e 10 artigos visíveis por quadro, baseados nos{" "}
-        {articles.length} artigos da página atual. Use “Próxima página” para explorar mais.
+        <Localized
+          value={" Até 18 descritores distintos e 10 artigos visíveis por quadro, baseados nos"}
+        />
+        <Localized value={" "} />
+        <Localized value={articles.length} />
+        <Localized value={" artigos da página atual. Use “Próxima página” para explorar mais. "} />
       </p>
     </div>
   );
@@ -283,6 +344,8 @@ export function MapArticles({
   meshIds: string[];
   remote?: boolean;
 }) {
+  const _uiLanguage = useLanguage().language;
+
   const [cursor, setCursor] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "network">("list");
   useEffect(() => {
@@ -299,132 +362,212 @@ export function MapArticles({
     retry: 1,
   });
   return (
-    <section className="panel space-y-3 p-3 text-xs" aria-label="Artigos do subconjunto">
-      <h2 className="font-display text-sm font-semibold">Artigos do mapa</h2>
+    <section className="panel space-y-3 p-3 text-xs" aria-label={t("Artigos do subconjunto")}>
+      <h2 className="font-display text-sm font-semibold">
+        <Localized value={"Artigos do mapa"} />
+      </h2>
       <p className="text-muted-foreground">
-        {start}–{end} · associados aos conceitos em foco ou ao subconjunto do mapa.
+        <Localized value={start} />
+        <Localized value={"–"} />
+        <Localized value={end} />
+        <Localized value={" · associados aos conceitos em foco ou ao subconjunto do mapa. "} />
       </p>
-      {!remote && (
-        <p className="text-[10px] text-muted-foreground">
-          Corpus publicado do PubMed · títulos e descritores disponíveis; autores, periódico e DOI
-          não incluídos neste recorte.
-        </p>
-      )}
+      <Localized
+        value={
+          !remote && (
+            <p className="text-[10px] text-muted-foreground">
+              <Localized
+                value={
+                  " Corpus publicado do PubMed · títulos e descritores disponíveis; autores, periódico e DOI não incluídos neste recorte. "
+                }
+              />
+            </p>
+          )
+        }
+      />
       <div className="flex flex-wrap gap-2">
-        {(["list", "network"] as const).map((mode) => (
-          <button
-            key={mode}
-            aria-pressed={view === mode}
-            className="rounded border border-border px-2 py-1 aria-pressed:bg-primary/20"
-            onClick={() => setView(mode)}
-          >
-            {mode === "list" ? "Lista" : "Rede artigo–MeSH"}
-          </button>
-        ))}
+        <Localized
+          value={(["list", "network"] as const).map((mode) => (
+            <button
+              key={mode}
+              aria-pressed={view === mode}
+              className="rounded border border-border px-2 py-1 aria-pressed:bg-primary/20"
+              onClick={() => setView(mode)}
+            >
+              <Localized value={mode === "list" ? "Lista" : "Rede artigo–MeSH"} />
+            </button>
+          ))}
+        />
       </div>
-      {result.isPending && <p role="status">Consultando artigos…</p>}
-      {result.isError && (
-        <div role="alert">
-          <p>Artigos temporariamente indisponíveis.</p>
-          <button className="underline" onClick={() => void result.refetch()}>
-            Tentar novamente
-          </button>
-        </div>
-      )}
-      {result.data && (
-        <>
-          <p aria-live="polite">{num(result.data.total)} artigos distintos no subconjunto</p>
-          {result.data.years.length > 0 && (
-            <details>
-              <summary className="cursor-pointer">Distribuição temporal</summary>
-              <div className="max-h-40 overflow-auto">
-                {result.data.years.map((point) => (
-                  <div key={point.year} className="flex items-center gap-2 py-0.5">
-                    <span>{point.year}</span>
-                    <span
-                      className="h-1.5 bg-primary"
-                      style={{
-                        width: `${(100 * point.count) / Math.max(...result.data!.years.map((p) => p.count))}%`,
-                      }}
-                    />
-                    <span>{num(point.count)}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-          {result.data.total === 0 && <p>Nenhum artigo no subconjunto atual.</p>}
-          {view === "network" ? (
-            <ArticleMeshNetwork
-              key={`${start}:${end}:${cursor}:${meshIds.join(",")}`}
-              articles={result.data.items}
-            />
-          ) : (
-            <ul className="space-y-4">
-              {result.data.items.map((article) => (
-                <li key={article.pmid} className="border-t border-border pt-3">
-                  <a
-                    className="font-medium text-primary hover:underline"
-                    href={`https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {article.title || `PMID ${article.pmid}`}
-                  </a>
-                  <p className="mt-1">
-                    {article.year}
-                    {article.journal ? ` · ${article.journal}` : ""} · PMID {article.pmid}
-                  </p>
-                  {article.authors.length > 0 && (
-                    <p className="mt-1 text-muted-foreground">
-                      {article.authors.slice(0, 6).join(", ")}
-                      {article.authors.length > 6 ? " et al." : ""}
+      <Localized
+        value={
+          result.isPending && (
+            <p role="status">
+              <Localized value={"Consultando artigos…"} />
+            </p>
+          )
+        }
+      />
+      <Localized
+        value={
+          result.isError && (
+            <div role="alert">
+              <p>
+                <Localized value={"Artigos temporariamente indisponíveis."} />
+              </p>
+              <button className="underline" onClick={() => void result.refetch()}>
+                <Localized value={" Tentar novamente "} />
+              </button>
+            </div>
+          )
+        }
+      />
+      <Localized
+        value={
+          result.data && (
+            <>
+              <p aria-live="polite">
+                <Localized value={num(result.data.total)} />
+                <Localized value={" artigos distintos no subconjunto"} />
+              </p>
+              <Localized
+                value={
+                  result.data.years.length > 0 && (
+                    <details>
+                      <summary className="cursor-pointer">
+                        <Localized value={"Distribuição temporal"} />
+                      </summary>
+                      <div className="max-h-40 overflow-auto">
+                        <Localized
+                          value={result.data.years.map((point) => (
+                            <div key={point.year} className="flex items-center gap-2 py-0.5">
+                              <span>
+                                <Localized value={point.year} />
+                              </span>
+                              <span
+                                className="h-1.5 bg-primary"
+                                style={{
+                                  width: `${(100 * point.count) / Math.max(...result.data!.years.map((p) => p.count))}%`,
+                                }}
+                              />
+                              <span>
+                                <Localized value={num(point.count)} />
+                              </span>
+                            </div>
+                          ))}
+                        />
+                      </div>
+                    </details>
+                  )
+                }
+              />
+              <Localized
+                value={
+                  result.data.total === 0 && (
+                    <p>
+                      <Localized value={"Nenhum artigo no subconjunto atual."} />
                     </p>
-                  )}
-                  {article.doi && (
-                    <a
-                      className="mt-1 block break-all text-primary hover:underline"
-                      href={`https://doi.org/${encodeURIComponent(article.doi)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      DOI: {article.doi}
-                    </a>
-                  )}
-                  <details className="mt-2">
-                    <summary className="cursor-pointer">
-                      MeSH associados ({article.mesh.length})
-                    </summary>
-                    <ul>
-                      {article.mesh.map((m) => (
-                        <li key={m.id}>
-                          {m.label} · {m.id}
-                        </li>
-                      ))}
+                  )
+                }
+              />
+              <Localized
+                value={
+                  view === "network" ? (
+                    <ArticleMeshNetwork
+                      key={`${start}:${end}:${cursor}:${meshIds.join(",")}`}
+                      articles={result.data.items}
+                    />
+                  ) : (
+                    <ul className="space-y-4">
+                      <Localized
+                        value={result.data.items.map((article) => (
+                          <li key={article.pmid} className="border-t border-border pt-3">
+                            <a
+                              className="font-medium text-primary hover:underline"
+                              href={`https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <Localized value={article.title || `PMID ${article.pmid}`} />
+                            </a>
+                            <p className="mt-1">
+                              <Localized value={article.year} />
+                              <Localized value={article.journal ? ` · ${article.journal}` : ""} />
+                              <Localized value={" · PMID "} />
+                              <Localized value={article.pmid} />
+                            </p>
+                            <Localized
+                              value={
+                                article.authors.length > 0 && (
+                                  <p className="mt-1 text-muted-foreground">
+                                    <Localized value={article.authors.slice(0, 6).join(", ")} />
+                                    <Localized
+                                      value={article.authors.length > 6 ? " et al." : ""}
+                                    />
+                                  </p>
+                                )
+                              }
+                            />
+                            <Localized
+                              value={
+                                article.doi && (
+                                  <a
+                                    className="mt-1 block break-all text-primary hover:underline"
+                                    href={`https://doi.org/${encodeURIComponent(article.doi)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <Localized value={" DOI: "} />
+                                    <Localized value={article.doi} />
+                                  </a>
+                                )
+                              }
+                            />
+                            <details className="mt-2">
+                              <summary className="cursor-pointer">
+                                <Localized value={" MeSH associados ("} />
+                                <Localized value={article.mesh.length} />
+                                <Localized value={") "} />
+                              </summary>
+                              <ul>
+                                <Localized
+                                  value={article.mesh.map((m) => (
+                                    <li key={m.id}>
+                                      <Localized value={m.label} />
+                                      <Localized value={" · "} />
+                                      <Localized value={m.id} />
+                                    </li>
+                                  ))}
+                                />
+                              </ul>
+                            </details>
+                          </li>
+                        ))}
+                      />
                     </ul>
-                  </details>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex justify-between">
-            <button
-              disabled={!cursor || result.isFetching}
-              onClick={() => setCursor(null)}
-              className="disabled:opacity-40"
-            >
-              Primeira página
-            </button>
-            <button
-              disabled={!result.data.next || result.isFetching}
-              onClick={() => setCursor(result.data!.next)}
-              className="disabled:opacity-40"
-            >
-              Próxima página →
-            </button>
-          </div>
-        </>
-      )}
+                  )
+                }
+              />
+              <div className="flex justify-between">
+                <button
+                  disabled={!cursor || result.isFetching}
+                  onClick={() => setCursor(null)}
+                  className="disabled:opacity-40"
+                >
+                  <Localized value={" Primeira página "} />
+                </button>
+                <button
+                  disabled={!result.data.next || result.isFetching}
+                  onClick={() => setCursor(result.data!.next)}
+                  className="disabled:opacity-40"
+                >
+                  <Localized value={" Próxima página → "} />
+                </button>
+              </div>
+            </>
+          )
+        }
+      />
     </section>
   );
 }

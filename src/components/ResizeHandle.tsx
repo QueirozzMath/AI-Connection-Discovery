@@ -1,3 +1,5 @@
+import { t, getLocale } from "@/lib/ui-language";
+import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { useRef } from "react";
 export function ResizeHandle({
   axis,
@@ -16,13 +18,15 @@ export function ResizeHandle({
   label: string;
   reverse?: boolean;
 }) {
+  const _uiLanguage = useLanguage().language;
+
   const drag = useRef<{ start: number; value: number } | null>(null);
   return (
     <button
       type="button"
       role="separator"
-      aria-label={label}
-      title={label + " · arraste ou use as setas"}
+      aria-label={t(label)}
+      title={t(label + " · arraste ou use as setas")}
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}
       aria-valuenow={value}
       aria-valuemin={min}

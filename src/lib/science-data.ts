@@ -1,3 +1,4 @@
+import { getLocale } from "./ui-language";
 import { queryOptions } from "@tanstack/react-query";
 
 export interface GraphNode {
@@ -239,4 +240,4 @@ export const FEATURE_LABELS: Record<string, string> = {
 };
 
 export const pct = (v: number, digits = 1) => `${(v * 100).toFixed(digits)}%`;
-export const num = (v: number) => v.toLocaleString("pt-BR");
+export const num = (v: number) => v.toLocaleString(getLocale());
