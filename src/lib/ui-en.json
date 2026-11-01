@@ -571,5 +571,6 @@
   "O Claude não concluiu a resposta. Tente novamente ou escolha outro modelo.": "Claude did not complete its response. Retry or choose another model.",
   "A API não aceitou o modelo ou o formato JSON solicitado. Use um modelo compatível com Chat Completions e JSON.": "The API did not accept the model or JSON format. Use a model compatible with Chat Completions and JSON.",
   "Informe o identificador do modelo disponível na sua API.": "Enter the model identifier available in your API.",
-  "Informe a chave da API escolhida. A chave fica somente nesta sessão.": "Enter the selected API key. The key stays only in this session."
+  "Informe a chave da API escolhida. A chave fica somente nesta sessão.": "Enter the selected API key. The key stays only in this session.",
+  "A API tentou redirecionar a solicitação. Use o endereço final do provedor.": "The API attempted to redirect the request. Use the provider’s final endpoint URL."
 }

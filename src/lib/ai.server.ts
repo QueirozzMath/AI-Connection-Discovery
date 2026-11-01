@@ -317,8 +317,16 @@ export async function askAiJson(
           method: "POST",
           ...request(target, system, prompt),
           signal: controller.signal,
-          redirect: "error",
+          redirect: "manual",
         });
+        // Workers supports manual/follow, not redirect:error. Never forward credentials.
+        if (response.status >= 300 && response.status < 400) {
+          await response.body?.cancel();
+          throw new AiError(
+            "redirect",
+            "A API tentou redirecionar a solicitação. Use o endereço final do provedor.",
+          );
+        }
         if (!response.ok) {
           await response.body?.cancel();
           throw httpError(response.status);

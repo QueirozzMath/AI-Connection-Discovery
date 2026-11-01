@@ -41,7 +41,7 @@ test("anonymous default works without credentials and ignores personal settings"
   const app = load(async (url, init) => {
     assert.match(url, /ovh/);
     assert.equal(init.headers.Authorization, undefined);
-    assert.equal(init.redirect, "error");
+    assert.equal(init.redirect, "manual");
     assert.equal(JSON.parse(init.body).model, "Meta-Llama-3_3-70B-Instruct");
     return chat();
   });
@@ -88,7 +88,7 @@ for (const provider of ["openai", "openrouter", "anthropic", "gemini"])
       async (url, init) => {
         calls++;
         const b = JSON.parse(init.body);
-        assert.equal(init.redirect, "error");
+        assert.equal(init.redirect, "manual");
         if (provider === "gemini") {
           assert.match(url, /generativelanguage/);
           assert.equal(init.headers["x-goog-api-key"], "visitor-secret");
@@ -227,3 +227,21 @@ test("configuration never exposes server secrets", () => {
   const app = load(() => {}, { OPENROUTER_API_KEY: "private-server-secret" });
   assert.ok(!JSON.stringify(app.aiConfiguration()).includes("secret"));
 });
+
+for (const status of [301, 302, 303, 307, 308])
+  test(`redirect ${status} is rejected without a second request or forwarding credentials`, async () => {
+    let calls = 0;
+    const app = load(async (_url, init) => {
+      calls++;
+      if (!["manual", "follow"].includes(init.redirect))
+        throw new TypeError("Invalid redirect value");
+      assert.equal(init.redirect, "manual");
+      return new Response(null, { status, headers: { Location: "https://untrusted.example.org" } });
+    });
+    await assert.rejects(
+      app.askAiJson("S", "P", personal("openai"), "visitor-secret"),
+      /redirecionar/,
+    );
+    assert.equal(calls, 1);
+    assert.ok(!JSON.stringify(app.logs).includes("visitor-secret"));
+  });
