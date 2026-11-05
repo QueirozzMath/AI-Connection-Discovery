@@ -8,6 +8,11 @@ const OVH = "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1";
 const OR = "https://openrouter.ai/api/v1";
 const FREE_MODEL = "Meta-Llama-3_3-70B-Instruct";
 const MAX_BODY = 1_000_000;
+// Per-isolate coalescing: repeated clicks/retries share the same free request.
+// Never cache personal credentials or personal-provider results.
+const freeRequests = new Map<string, Promise<{ data: unknown; provenance: AiProvenance }>>();
+let freeNotBefore = 0;
+
 class AiError extends Error {
   constructor(
     public code: string,
@@ -295,7 +300,7 @@ function extract(payload: any, target: Target) {
     );
   }
 }
-export async function askAiJson(
+async function executeAiJson(
   system: string,
   prompt: string,
   raw?: AiSettings,
@@ -303,14 +308,18 @@ export async function askAiJson(
 ): Promise<{ data: unknown; provenance: AiProvenance }> {
   const settings = AiSettingsSchema.parse(raw ?? {});
   const pool = targets(settings, apiKey);
+  if (settings.mode === "free" && Date.now() < freeNotBefore)
+    throw new Error(
+      `O provedor gratuito atingiu o limite compartilhado. Aguarde ${Math.ceil((freeNotBefore - Date.now()) / 1000)} segundos e tente novamente. Sua conexão foi mantida.`,
+    );
   const attempts: AiAttempt[] = [];
   let last: AiError = new AiError("unavailable", "Nenhum modelo disponível.");
-  for (let i = 0; i < Math.min(2, pool.length === 1 && !pool[0]!.free ? 2 : pool.length); i++) {
+  for (let i = 0; i < Math.min(2, pool.length === 1 ? 2 : pool.length); i++) {
     const target = pool[Math.min(i, pool.length - 1)]!;
     const start = Date.now();
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), target.free ? 65000 : 120000);
+      const timer = setTimeout(() => controller.abort(), target.free ? 180000 : 120000);
       let payload: any;
       try {
         const response = await fetch(target.url, {
@@ -329,6 +338,18 @@ export async function askAiJson(
         }
         if (!response.ok) {
           await response.body?.cancel();
+          if (target.free && response.status === 429) {
+            const value = response.headers.get("retry-after");
+            const seconds =
+              value && /^\d+$/.test(value)
+                ? Number(value)
+                : value
+                  ? Math.ceil((Date.parse(value) - Date.now()) / 1000)
+                  : 60;
+            freeNotBefore =
+              Date.now() +
+              Math.min(3600, Math.max(60, Number.isFinite(seconds) ? seconds : 60)) * 1000;
+          }
           throw httpError(response.status);
         }
         payload = await readPayload(response);
@@ -382,11 +403,32 @@ export async function askAiJson(
         code: last.code,
         elapsedMs: Date.now() - start,
       });
+      if (target.free && (last.code === "quota" || last.code === "timeout")) break;
+      if (target.free && !last.retryable && pool.length === 1) break;
       if (!target.free && (!last.retryable || last.code === "timeout" || last.code === "quota"))
         break;
-      if (i === 0 && pool.length === 1 && !target.free)
+      if (i === 0 && pool.length === 1)
         await new Promise((r) => setTimeout(r, 750 + Math.random() * 500));
     }
   }
-  throw new Error(last.message);
+  throw new Error(`${last.message} [${attempts.at(-1)?.provider ?? "api"}: ${last.code}]`);
+}
+
+export async function askAiJson(
+  system: string,
+  prompt: string,
+  raw?: AiSettings,
+  apiKey?: string,
+): Promise<{ data: unknown; provenance: AiProvenance }> {
+  const settings = AiSettingsSchema.parse(raw ?? {});
+  if (settings.mode !== "free") return executeAiJson(system, prompt, settings, apiKey);
+  const id = JSON.stringify([system, prompt]);
+  const existing = freeRequests.get(id);
+  if (existing) return existing;
+  const pending = executeAiJson(system, prompt, settings).finally(() => {
+    freeRequests.delete(id);
+  });
+  // Bound stored dossiers; coalescing is best-effort across Worker isolates.
+  if (freeRequests.size < 8) freeRequests.set(id, pending);
+  return pending;
 }

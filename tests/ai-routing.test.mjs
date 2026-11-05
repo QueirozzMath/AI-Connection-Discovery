@@ -245,3 +245,43 @@ for (const status of [301, 302, 303, 307, 308])
     assert.equal(calls, 1);
     assert.ok(!JSON.stringify(app.logs).includes("visitor-secret"));
   });
+
+test("concurrent identical free requests share one inference without personal keys", async () => {
+  let calls = 0,
+    release;
+  const wait = new Promise((r) => (release = r));
+  const app = load(async (_url, init) => {
+    calls++;
+    assert.equal(init.headers.Authorization, undefined);
+    await wait;
+    return chat();
+  });
+  const a = app.askAiJson("S", "same dossier", undefined, "ignored");
+  const b = app.askAiJson("S", "same dossier");
+  release();
+  await Promise.all([a, b]);
+  assert.equal(calls, 1);
+});
+test("free transient network failure retries once with the unchanged full dossier", async () => {
+  const bodies = [];
+  const app = load(async (_url, init) => {
+    bodies.push(init.body);
+    if (bodies.length === 1) throw new TypeError("fetch failed");
+    return chat();
+  });
+  const r = await app.askAiJson("S", "full dossier");
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+  assert.equal(r.provenance.attempts[0].outcome, "network");
+});
+test("free quota honors Retry-After and never rotates models to evade the limit", async () => {
+  let calls = 0;
+  const app = load(async () => {
+    calls++;
+    return new Response("", { status: 429, headers: { "Retry-After": "120" } });
+  });
+  await assert.rejects(app.askAiJson("S", "first"), /limite/);
+  assert.equal(calls, 1);
+  await assert.rejects(app.askAiJson("S", "second"), /Aguarde 1\d\d segundos/);
+  assert.equal(calls, 1);
+});

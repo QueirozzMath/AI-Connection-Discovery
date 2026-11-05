@@ -203,7 +203,7 @@ export const generateHypothesis = createServerFn({ method: "POST" })
     ].join("\n");
 
     const completion = await askAiJson(
-      `${system}\n\nResponda SOMENTE com um objeto JSON valido nesta forma:\n${shape}\nOUTPUT LANGUAGE: ${data.language === "en" ? "English" : "Portuguese"}. Translate all prose fields; retain enum values.`,
+      `${system}\n\nResponda SOMENTE com um objeto JSON valido nesta forma:\n${shape}\nOUTPUT LANGUAGE: ${data.language === "en" ? "English" : "Portuguese"}. Translate all prose fields; retain enum values. Be concise: use 2–4 specific sentences per prose field, preserving citations, caveats and all required fields.`,
       context,
       data.ai,
       data.apiKey,

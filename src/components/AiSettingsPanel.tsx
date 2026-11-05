@@ -52,8 +52,8 @@ export function AiSettingsPanel({
       {ai.mode === "free" ? (
         <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
           {en
-            ? `Uses free models through ${configuration?.freeProvider ?? "OVHcloud"}. Shared quotas and availability apply. Never switches to a paid model. Selected evidence is sent to the provider; the actual model is shown in the result.`
-            : `Usa modelos gratuitos via ${configuration?.freeProvider ?? "OVHcloud"}. Sujeito a cotas compartilhadas e disponibilidade. Nunca troca para um modelo pago. As evidências selecionadas são enviadas ao provedor; o modelo utilizado aparece no resultado.`}
+            ? `Uses free models through ${configuration?.freeProvider ?? "OVHcloud"}. A full report may take up to 3 minutes. Shared quotas and availability apply. Never switches to a paid model. Selected evidence is sent to the provider; the actual model is shown in the result.`
+            : `Usa modelos gratuitos via ${configuration?.freeProvider ?? "OVHcloud"}. Um relatório completo pode levar até 3 minutos. Sujeito a cotas compartilhadas e disponibilidade. Nunca troca para um modelo pago. As evidências selecionadas são enviadas ao provedor; o modelo utilizado aparece no resultado.`}
         </p>
       ) : (
         <>
