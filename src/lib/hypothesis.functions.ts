@@ -1,3 +1,8 @@
+import {
+  HypothesisSchema as Schema,
+  normalizeHypothesis,
+  hypothesisJsonSchema,
+} from "./hypothesis-schema";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { AiSettingsSchema, type AiProvenance } from "./ai-settings";
@@ -61,30 +66,8 @@ const Input = z.object({
   expanded: z.boolean().default(false),
 });
 
-const Schema = z.object({
-  decision: z.enum(["propose", "reject"]),
-  documented_evidence: z.string(),
-  extrapolations: z.string(),
-  context_compatibility: z.string(),
-  contradictions: z.string(),
-  references: z.array(z.string().regex(/^\d{1,10}$/)).min(3),
-  title: z.string(),
-  hypothesis: z.string(),
-  mechanism: z.string(),
-  bridge_reasoning: z.string(),
-  testable_prediction: z.string(),
-  experiment: z.string().min(1),
-  potential_applications: z.string().min(1),
-  next_steps: z.string().min(1),
-  skeptic_critique: z.string(),
-  confidence: z.number().min(0).max(1),
-  novelty: z.enum(["alta", "media", "baixa"]),
-  innovation_value: z.string(),
-  falsification: z.string(),
-  evidence_limitations: z.string(),
-});
-
 export type HypothesisResult = z.infer<typeof Schema> & {
+  neurico_report?: { name: string; text: string };
   language?: "pt" | "en";
   pair: [string, string];
   model: string;
@@ -198,7 +181,8 @@ export const generateHypothesis = createServerFn({ method: "POST" })
       '  "novelty": "alta" | "media" | "baixa"',
       '  ,"innovation_value": string descrevendo a lacuna científica e a função transferida; não repetir aplicações potenciais,',
       '  "falsification": string com hipótese alternativa e resultado que refutaria a proposta,',
-      '  "evidence_limitations": string com lacunas de cada braço A–B e B–C e limites da extrapolação',
+      '  "evidence_limitations": string com lacunas de cada braço A–B e B–C e limites da extrapolação,',
+      '  "research_plan": string: plano de investigação inspirado no fluxo NeuriCo, com sub-hipóteses, recursos realmente disponíveis versus recursos a buscar, baseline e comparadores, variáveis e métricas, plano estatístico sem inventar parâmetros, reprodutibilidade, etapas de execução futura e decisão humana. Nunca declare experimentos executados. Não use literatura posterior ao corte.',
       "}",
     ].join("\n");
 
@@ -207,9 +191,16 @@ export const generateHypothesis = createServerFn({ method: "POST" })
       context,
       data.ai,
       data.apiKey,
+      hypothesisJsonSchema,
     );
-    const parsed = Schema.safeParse(completion.data);
-    if (!parsed.success) throw new Error("Resposta do agente fora do formato esperado.");
+    const parsed = Schema.safeParse(normalizeHypothesis(completion.data));
+    if (!parsed.success) {
+      const fields = [...new Set(parsed.error.issues.map((i) => i.path.join(".")))].join(", ");
+      console.warn("hypothesis_schema_invalid", { model: completion.provenance.model, fields });
+      throw new Error(
+        `Resposta científica incompleta ou inválida nos campos: ${fields}. Nenhuma hipótese foi publicada; tente novamente.`,
+      );
+    }
     const allowed = new Set(assessment.arms.flatMap((a) => a.articles.map((p) => p.pmid)));
     if (parsed.data.references.some((id) => !allowed.has(id)))
       throw new Error("Referência fora das evidências recuperadas. Gere novamente.");

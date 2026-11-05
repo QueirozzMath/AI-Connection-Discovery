@@ -91,6 +91,7 @@ function load(status = "ready", response = output) {
             return builder;
           },
         };
+      if (id === "./hypothesis-schema") return require("../src/lib/hypothesis-schema.ts");
       if (id === "./ai-settings") return require("../src/lib/ai-settings.ts");
       if (id === "./ai.server")
         return {
@@ -157,7 +158,7 @@ test("client cannot smuggle a longer chain into normal mode or change its endpoi
 
 test("experiment, applications and next steps must be generated as separate fields", async () => {
   const { experiment, ...incomplete } = output;
-  await assert.rejects(load("ready", incomplete).fn(input), /formato esperado/);
+  await assert.rejects(load("ready", incomplete).fn(input), /inválida nos campos: experiment/);
   const result = await load().fn(input);
   assert.equal(result.experiment, "Controlled experiment");
   assert.equal(result.potential_applications, "Potential applications");
@@ -171,4 +172,25 @@ test("new reports follow the selected language without translating identifiers o
   assert.equal(result.novelty, "baixa");
   assert.match(app.system(), /OUTPUT LANGUAGE: English/);
   assert.deepEqual(Array.from(result.references), output.references);
+});
+
+test("numeric PMIDs and explicit percentage confidence are normalized without adding facts", async () => {
+  const r = await load("ready", {
+    ...output,
+    references: [123456, 123457, 123458],
+    confidence: "30%",
+    novelty: "low",
+  }).fn(input);
+  assert.equal(r.confidence, 0.3);
+  assert.deepEqual(Array.from(r.references), output.references);
+});
+test("two distinct references can support both verified arms without an arbitrary third citation", async () => {
+  const r = await load("ready", { ...output, references: ["123456", "123457"] }).fn(input);
+  assert.equal(r.references.length, 2);
+});
+test("missing fields are identified instead of publishing an incomplete report", async () => {
+  await assert.rejects(
+    load("ready", { ...output, mechanism: undefined, confidence: 45 }).fn(input),
+    /mechanism.*confidence/,
+  );
 });

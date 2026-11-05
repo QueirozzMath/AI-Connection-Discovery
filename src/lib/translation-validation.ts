@@ -1,4 +1,5 @@
 export const reportTextFields = [
+  "research_plan",
   "title",
   "hypothesis",
   "mechanism",

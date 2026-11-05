@@ -153,7 +153,7 @@ function targets(settings: AiSettings, key?: string): Target[] {
     },
   ];
 }
-function request(target: Target, system: string, prompt: string) {
+function request(target: Target, system: string, prompt: string, schema?: Record<string, unknown>) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const messages = [
     { role: "system", content: system },
@@ -182,7 +182,12 @@ function request(target: Target, system: string, prompt: string) {
       model: target.model,
       messages,
       stream: false,
-      response_format: { type: "json_object" },
+      response_format: schema
+        ? {
+            type: "json_schema",
+            json_schema: { name: "scientific_hypothesis", strict: true, schema },
+          }
+        : { type: "json_object" },
       ...(target.provider === "openai" ? { max_completion_tokens: 8192 } : { max_tokens: 8192 }),
       ...(target.provider === "openrouter" && target.free
         ? { provider: { max_price: { prompt: 0, completion: 0 }, require_parameters: true } }
@@ -305,6 +310,7 @@ async function executeAiJson(
   prompt: string,
   raw?: AiSettings,
   apiKey?: string,
+  schema?: Record<string, unknown>,
 ): Promise<{ data: unknown; provenance: AiProvenance }> {
   const settings = AiSettingsSchema.parse(raw ?? {});
   const pool = targets(settings, apiKey);
@@ -324,7 +330,7 @@ async function executeAiJson(
       try {
         const response = await fetch(target.url, {
           method: "POST",
-          ...request(target, system, prompt),
+          ...request(target, system, prompt, schema),
           signal: controller.signal,
           redirect: "manual",
         });
@@ -419,13 +425,14 @@ export async function askAiJson(
   prompt: string,
   raw?: AiSettings,
   apiKey?: string,
+  schema?: Record<string, unknown>,
 ): Promise<{ data: unknown; provenance: AiProvenance }> {
   const settings = AiSettingsSchema.parse(raw ?? {});
-  if (settings.mode !== "free") return executeAiJson(system, prompt, settings, apiKey);
-  const id = JSON.stringify([system, prompt]);
+  if (settings.mode !== "free") return executeAiJson(system, prompt, settings, apiKey, schema);
+  const id = JSON.stringify([system, prompt, schema]);
   const existing = freeRequests.get(id);
   if (existing) return existing;
-  const pending = executeAiJson(system, prompt, settings).finally(() => {
+  const pending = executeAiJson(system, prompt, settings, undefined, schema).finally(() => {
     freeRequests.delete(id);
   });
   // Bound stored dossiers; coalescing is best-effort across Worker isolates.

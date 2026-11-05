@@ -873,7 +873,21 @@ function HypothesesPage() {
               )}
             </div>
           )}
-          <Localized value={result && <HypothesisReport result={result} />} />
+          <Localized
+            value={
+              result && (
+                <HypothesisReport
+                  result={result}
+                  onUpdate={(updated) =>
+                    setResults((r) => ({
+                      ...r,
+                      [outputKey]: { ...r[outputKey]!, neurico_report: updated.neurico_report! },
+                    }))
+                  }
+                />
+              )
+            }
+          />
 
           <Localized
             value={

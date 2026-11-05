@@ -35,7 +35,12 @@ function component(path, dependencies = {}) {
 const { CitationText } = component("../src/components/CitationText.tsx", {
   "@/lib/citation-parts": { citationParts },
 });
+const { NeuricoPanel } = component("../src/components/NeuricoPanel.tsx", {
+  "@/lib/neurico": require("../src/lib/neurico.ts"),
+  "./CitationText": { CitationText },
+});
 const { HypothesisReport } = component("../src/components/HypothesisReport.tsx", {
+  "./NeuricoPanel": { NeuricoPanel },
   "./CitationText": { CitationText },
   "./ui/badge": { Badge: ({ children }) => React.createElement("span", null, children) },
 });
@@ -74,6 +79,8 @@ const fixture = {
   experiment: "Modelo, intervenção, controles e variáveis mensuráveis são descritos separadamente.",
   falsification: "Resultados que enfraqueceriam a hipótese são definidos antes do experimento.",
   potential_applications: "Aplicações potenciais são condicionadas à sustentação experimental.",
+  research_plan:
+    "Plano de investigação de teste: comparar com baseline e registrar artefatos; execução ainda pendente.",
   next_steps: "Priorizar as evidências que resolvem as principais lacunas.",
 };
 const html = renderToStaticMarkup(React.createElement(HypothesisReport, { result: fixture }));
@@ -98,6 +105,11 @@ test("report has five sections in scientific reading order and preserves request
   assert.match(html, /Confiança estimada pelo agente: 45%/);
   assert.match(html, /Novidade estimada: alta/);
   assert.match(html, /1 referência fornecida ao agente/);
+});
+test("NeuriCo plan is visible without claiming experiments were executed", () => {
+  assert.match(html, /NeuriCo · plano de investigação/);
+  assert.match(html, /Exportar ideia NeuriCo/);
+  assert.match(html, /não foram executados/);
 });
 test("inline references and article titles are safe links to the source", () => {
   assert.ok(

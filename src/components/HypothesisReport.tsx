@@ -1,3 +1,4 @@
+import { NeuricoPanel } from "./NeuricoPanel";
 import { t, getLocale } from "@/lib/ui-language";
 import { Localized, useLanguage } from "@/components/LanguageProvider";
 import { Lightbulb, Link2, ShieldAlert, FlaskConical, Globe2, type LucideIcon } from "lucide-react";
@@ -5,7 +6,13 @@ import type { HypothesisResult } from "@/lib/hypothesis.functions";
 import { CitationText } from "./CitationText";
 import { Badge } from "./ui/badge";
 
-export function HypothesisReport({ result }: { result: HypothesisResult }) {
+export function HypothesisReport({
+  result,
+  onUpdate,
+}: {
+  result: HypothesisResult;
+  onUpdate?: ((result: HypothesisResult) => void) | undefined;
+}) {
   const _uiLanguage = useLanguage().language;
 
   const articles = new Map(
@@ -160,6 +167,7 @@ export function HypothesisReport({ result }: { result: HypothesisResult }) {
         <Localized value={field("Aplicações potenciais", result.potential_applications)} />
         <Localized value={field("Próximos passos de investigação", result.next_steps)} />
       </ReportSection>
+      <NeuricoPanel result={result} onUpdate={onUpdate} />
     </article>
   );
 }
