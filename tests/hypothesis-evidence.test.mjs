@@ -91,16 +91,20 @@ function load(status = "ready", response = output) {
             return builder;
           },
         };
-      if (id === "./gemini.server")
+      if (id === "./ai-settings") return require("../src/lib/ai-settings.ts");
+      if (id === "./ai.server")
         return {
           resolveGeminiKey: () => "test-key",
           geminiConfiguration: () => ({ model: "test-model" }),
-          askGeminiJson: async (system, prompt) => {
+          askAiJson: async (system, prompt) => {
             calls++;
             lastSystem = system;
             assert.match(system, /INTERNAL/);
             assert.match(prompt, /123456/);
-            return response;
+            return {
+              data: response,
+              provenance: { model: "test-model", provider: "test", mode: "free", attempts: [] },
+            };
           },
         };
       if (id === "./discovery-manifesto.server")
@@ -114,7 +118,7 @@ function load(status = "ready", response = output) {
     },
   };
   vm.runInNewContext(js, context);
-  return { fn: module.exports.generateHypothesis, calls: () => calls, system:()=>lastSystem };
+  return { fn: module.exports.generateHypothesis, calls: () => calls, system: () => lastSystem };
 }
 test("generation rechecks the evidence gate on the server before calling the LLM", async () => {
   const app = load("pending");
@@ -160,4 +164,11 @@ test("experiment, applications and next steps must be generated as separate fiel
   assert.equal(result.next_steps, "Obtain evidence");
 });
 
-test("new reports follow the selected language without translating identifiers or enums", async()=>{const app=load();const result=await app.fn({...input,language:"en"});assert.equal(result.language,"en");assert.equal(result.novelty,"baixa");assert.match(app.system(),/OUTPUT LANGUAGE: English/);assert.deepEqual(Array.from(result.references),output.references);});
+test("new reports follow the selected language without translating identifiers or enums", async () => {
+  const app = load();
+  const result = await app.fn({ ...input, language: "en" });
+  assert.equal(result.language, "en");
+  assert.equal(result.novelty, "baixa");
+  assert.match(app.system(), /OUTPUT LANGUAGE: English/);
+  assert.deepEqual(Array.from(result.references), output.references);
+});
