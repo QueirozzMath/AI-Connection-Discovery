@@ -9,7 +9,12 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "neurico:setup": "node tools/neurico/manage.mjs setup",
+    "neurico:doctor": "node tools/neurico/manage.mjs doctor",
+    "neurico:login": "node tools/neurico/manage.mjs login",
+    "neurico:submit": "node tools/neurico/manage.mjs submit",
+    "neurico:run": "node tools/neurico/manage.mjs run"
   },
   "overrides": {
     "rolldown": "1.2.1"

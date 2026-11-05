@@ -36,3 +36,6 @@ pipeline/cache/desc*.xml.gz
 .env
 .env.*
 !.env.example
+
+# Local NeuriCo installation, OAuth and research outputs
+.neurico/
